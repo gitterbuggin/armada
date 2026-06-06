@@ -6,6 +6,7 @@ install -Dpm 0755 /ctx/vendor/inputplumber/inputplumber /usr/bin/inputplumber
 
 chmod 0755 /usr/bin/steamos-update
 chmod 0755 /usr/libexec/armada/*
+chmod 0755 /usr/libexec/os-session-select
 
 find /etc/NetworkManager/system-connections -name '*.nmconnection' -exec chmod 0600 {} + -exec chown root:root {} + 2>/dev/null || true
 

@@ -1,0 +1,9 @@
+#!/usr/bin/bash
+# Terra's steamos-session-select execs this hook (Steam "Switch to Desktop").
+set -euo pipefail
+
+case "${1:-gamescope}" in
+    desktop|plasma) exec sudo /usr/libexec/armada/switch-session desktop ;;
+    gamescope)      exec sudo /usr/libexec/armada/switch-session gamemode ;;
+    *) echo "unrecognised session: ${1}" >&2; exit 1 ;;
+esac

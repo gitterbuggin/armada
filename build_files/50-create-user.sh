@@ -25,5 +25,7 @@ cat > /etc/sudoers.d/armada-user <<'EOF'
 %wheel ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sddm
 %wheel ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
 %wheel ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot
+%wheel ALL=(ALL) NOPASSWD: /usr/libexec/armada/switch-session desktop
+%wheel ALL=(ALL) NOPASSWD: /usr/libexec/armada/switch-session gamemode
 EOF
 chmod 0440 /etc/sudoers.d/armada-user
