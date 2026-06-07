@@ -30,6 +30,7 @@ Includes:
 | Odin 2 Portal | SM8550 | ✅ Supported and tested |
 | Odin 2 Mini | SM8550 | ✅ Supported (touchscreen not working) |
 | Odin 2 | SM8550 | ⚪ Supported but untested |
+| Retroid Pocket 6 | SM8550 | ⚪ Supported but untested |
 
 ## Install
 
@@ -66,18 +67,14 @@ development.
 - **Install to internal storage:** currently boots from SD card
 - **Update mechanism:** image-based updates with rollback
 - **Power / fan control:** integrated with Steam UI where possible
+- **Game compatibility decky plugin:** per game FEX and Proton settings
 - **Broader device support:** e.g. Odin 3
 
 ## Known issues
 
-- **QAM button is unmapped.** Home is mapped to the Steam button currently. 
-  Use Home+A to open the Quick Access Menu. Dedicated QAM button support is 
-  in development.
 - **No true suspend.** Pressing power does a "fake suspend" inspired by ROCKNIX,
   not real S3 sleep, so idle battery drain is higher than it should be.
-- **GPU hangs from the Steam UI.** `steamwebhelper` (Steam's Chromium-based UI)
-  can occasionally trigger an Adreno/Turnip GPU fault that locks the GPU until
-  reboot. Currently under investigation.
+- **QAM is unmapped on Pocket Evo.** Use Home+A to open the Quick Access Menu.
 
 ## Credits
 
