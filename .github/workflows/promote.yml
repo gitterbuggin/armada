@@ -71,7 +71,7 @@ jobs:
             promote latest
           fi
 
-          # Release pin: an immutable tag that never moves, for the published image.
-          if [ -n "${{ inputs.version }}" ]; then
+          # Release pin is stable-only; channels (testing/beta) stay bare pointers.
+          if [ "${{ inputs.target }}" = stable ] && [ -n "${{ inputs.version }}" ]; then
             promote "${{ inputs.version }}"
           fi
