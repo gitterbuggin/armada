@@ -15,7 +15,9 @@ env:
   IMAGE_DESC: "Armada: a gaming-focused, SteamOS-like Fedora bootc image for ARM64 handhelds"
   IMAGE_NAME: "${{ github.event.repository.name }}"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
-  DEFAULT_TAG: "latest"
+  # Every merge to main publishes the "testing" channel; beta/stable are made by
+  # promoting (retagging) a testing build via promote.yml — no rebuild.
+  DEFAULT_TAG: "testing"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
@@ -41,6 +43,25 @@ jobs:
         run: |
           echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
           echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
+
+      - name: Ensure container tools
+        run: |
+          set -euxo pipefail
+          # ubuntu-24.04 dropped these from the runner image; the build action,
+          # rechunk, and push all need them.
+          need=""
+          for t in buildah podman skopeo; do
+            command -v "$t" >/dev/null || need="$need $t"
+          done
+          [ -z "$need" ] || { sudo apt-get update && sudo apt-get install -y $need; }
+
+      - name: Require signing key before publishing a channel
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          if [ -z "${{ secrets.SIGNING_SECRET }}" ]; then
+            echo "::error::SIGNING_SECRET is not set — refusing to publish an unsigned image (devices verify ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }})."
+            exit 1
+          fi
 
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -84,31 +105,49 @@ jobs:
           containerfiles: |
             ./Containerfile
           image: ${{ env.IMAGE_NAME }}
-          tags: ${{ steps.metadata.outputs.tags }}
+          tags: raw
           labels: ${{ steps.metadata.outputs.labels }}
           oci: false
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rechunk for small OTA deltas
+        id: rechunk
+        run: |
+          set -euxo pipefail
+          # Ubuntu 24.04 blocks unprivileged user namespaces, which rootless
+          # skopeo needs to read the rootless container store. Allow them.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          # build-chunked-oci runs rpm-ostree from inside the image against root
+          # containers-storage, so bridge the rootless-built image over first.
+          skopeo copy "containers-storage:localhost/${IMAGE_NAME}:raw" oci-archive:/tmp/raw.tar
+          sudo skopeo copy oci-archive:/tmp/raw.tar containers-storage:localhost/raw-img
+          sudo podman run --rm --privileged \
+            --volume /var/lib/containers:/var/lib/containers \
+            localhost/raw-img \
+            rpm-ostree compose build-chunked-oci --bootc --max-layers 127 \
+            --format-version 2 \
+            --from localhost/raw-img --output containers-storage:localhost/chunked-img
 
-      - name: Push To GHCR
-        uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # v2
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      - name: Push to GHCR
         id: push
-        env:
-          REGISTRY_USER: ${{ github.actor }}
-          REGISTRY_PASSWORD: ${{ github.token }}
-        with:
-          registry: ${{ env.IMAGE_REGISTRY }}
-          image: ${{ env.IMAGE_NAME }}
-          tags: ${{ steps.metadata.outputs.tags }}
-          username: ${{ env.REGISTRY_USER }}
-          password: ${{ env.REGISTRY_PASSWORD }}
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          set -euxo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
+          IMAGE_FULL="${IMAGE_REGISTRY}/${IMAGE_NAME}"
+          # One image, many tags → one digest, so one signature (below) covers all.
+          # Retry so a transient ghcr 5xx can't leave a tag pushed but unsigned.
+          digestfile=$(mktemp)
+          push_tag() {
+            local n=0
+            until sudo skopeo copy --digestfile="${digestfile}" \
+                  containers-storage:localhost/chunked-img "docker://${IMAGE_FULL}:$1"; do
+              n=$((n + 1)); [ "${n}" -ge 3 ] && return 1; sleep 15
+            done
+          }
+          for tag in ${{ steps.metadata.outputs.tags }}; do
+            push_tag "${tag}"
+          done
+          echo "digest=$(cat "${digestfile}")" >> "${GITHUB_OUTPUT}"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -122,9 +161,10 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && env.HAVE_SIGNING_SECRET == 'true'
         run: |
           IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
-          for tag in ${{ steps.metadata.outputs.tags }}; do
-            cosign sign -y --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
-          done
+          # Sign the digest, not a tag (a concurrent run could re-point the tag).
+          # --new-bundle-format=false: bootc's verifier expects the legacy .sig; the
+          # default flips in cosign v3.
+          cosign sign -y --new-bundle-format=false --key env://COSIGN_PRIVATE_KEY "${IMAGE_FULL}@${{ steps.push.outputs.digest }}"
         env:
           HAVE_SIGNING_SECRET: ${{ secrets.SIGNING_SECRET != '' }}
           TAGS: ${{ steps.push.outputs.digest }}

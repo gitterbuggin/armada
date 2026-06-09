@@ -44,12 +44,20 @@ root_source() {
 resolve_partlabel() {
     local label="$1"
     local matches=()
-    mapfile -t matches < <(blkid -t "PARTLABEL=${label}" -o device 2>/dev/null || true)
+    # Restrict to $DEVICE — a duplicate label on another disk must not match us.
+    mapfile -t matches < <(blkid -t "PARTLABEL=${label}" -o device 2>/dev/null \
+        | grep -E "^${DEVICE}p?[0-9]+$" || true)
     if [[ ${#matches[@]} -ne 1 || ! -b ${matches[0]} ]]; then
-        echo "ERROR: expected exactly one partition with PARTLABEL=${label}" >&2
+        echo "ERROR: expected exactly one partition with PARTLABEL=${label} on ${DEVICE}" >&2
         exit 1
     fi
     printf '%s\n' "${matches[0]}"
+}
+
+part_node() {
+    # /dev/sda + 5 → /dev/sda5, but /dev/mmcblk0 / /dev/nvme0n1 need a 'p': …0p5.
+    local dev="$1" num="$2"
+    [[ $dev =~ [0-9]$ ]] && echo "${dev}p${num}" || echo "${dev}${num}"
 }
 
 partition_names() {
@@ -92,7 +100,7 @@ find_userdata() {
     IFS=':' read -r UD_NUM UD_STARTB UD_ENDB _ <<< "${ud_line[0]}"
     UD_START=${UD_STARTB%B}
     UD_END=${UD_ENDB%B}
-    UD_PART="${DEVICE}${UD_NUM}"
+    UD_PART=$(part_node "$DEVICE" "$UD_NUM")
     UD_START_MIB=$(( (UD_START + 1048575) / 1048576 ))
     UD_END_MIB=$(( UD_END / 1048576 ))
     UD_ORIG_GIB=$(( (UD_END_MIB - UD_START_MIB) / 1024 ))
@@ -175,9 +183,10 @@ EOF
     partprobe "$DEVICE" || true
     udevadm settle
 
-    ESP_PART="${DEVICE}${esp_num}"
-    BOOT_PART="${DEVICE}${boot_num}"
-    ROOT_PART="${DEVICE}${root_num}"
+    # Resolve by the labels just set, not by assumed device-node numbers.
+    ESP_PART=$(resolve_partlabel ROCKNIX)
+    BOOT_PART=$(resolve_partlabel ARMADA_BOOT)
+    ROOT_PART=$(resolve_partlabel ARMADA_ROOT)
     for part in "$UD_PART" "$ESP_PART" "$BOOT_PART" "$ROOT_PART"; do
         [[ -b $part ]] || { echo "ERROR: $part did not appear after partitioning" >&2; exit 1; }
     done
@@ -193,25 +202,29 @@ base_kargs() {
     done
 }
 
-copy_bootloader_files() {
-    if command -v bootupctl >/dev/null 2>&1; then
-        bootupctl backend install --filesystem "$TARGET" "$TARGET" || true
+set_origin() {
+    # A raw `ostree admin deploy` leaves no container origin (bootc upgrade no-ops);
+    # copy the booted origin so the internal install tracks the same ghcr ref.
+    local src dst ref
+    # || true: an empty glob makes ls exit nonzero, which set -e would treat as fatal.
+    src=$(ls /ostree/deploy/*/deploy/"${commit}".*.origin 2>/dev/null | head -n1) || true
+    dst=$(ls "$TARGET"/ostree/deploy/*/deploy/"${commit}".*.origin 2>/dev/null | head -n1) || true
+    if [[ -z $src || -z $dst ]]; then
+        echo "WARNING: could not set bootc origin; internal install will NOT receive OTA updates" >&2
+        return
     fi
+    cp -f "$src" "$dst"
+    # Only helps if the booted image tracks ghcr; a local build's origin won't.
+    ref=$(sed -n 's/^container-image-reference=//p' "$dst" | head -1)
+    if [[ $ref != *ghcr.io/* ]]; then
+        echo "WARNING: bootc origin is '${ref:-<none>}', not a ghcr image — OTA updates will NOT work on this install (expected for a locally-built image)." >&2
+    fi
+}
 
-    mkdir -p "$TARGET/boot/efi/EFI"
-    if [[ -d /boot/efi/EFI/BOOT ]]; then
-        cp -a /boot/efi/EFI/BOOT "$TARGET/boot/efi/EFI/"
-    fi
-    if [[ -d /boot/efi/EFI/fedora ]]; then
-        cp -a /boot/efi/EFI/fedora "$TARGET/boot/efi/EFI/"
-    fi
-    if [[ -d /boot/grub2 ]]; then
-        cp -a /boot/grub2 "$TARGET/boot/"
-    fi
-
-    mkdir -p "$TARGET/boot/efi/EFI/fedora" "$TARGET/boot/grub2"
-    printf 'set BOOT_UUID="%s"\n' "$BOOT_UUID" > "$TARGET/boot/efi/EFI/fedora/bootuuid.cfg"
-    printf 'set BOOT_UUID="%s"\n' "$BOOT_UUID" > "$TARGET/boot/grub2/bootuuid.cfg"
+seed_kernel() {
+    # armada-bootimg-sync only regenerates /KERNEL at shutdown; seed the first one.
+    ESP="$TARGET/boot/efi" BOOTROOT="$TARGET/boot" \
+        /usr/libexec/armada/armada-bootimg-update
 }
 
 write_fstab() {
@@ -220,6 +233,8 @@ write_fstab() {
     [[ -n $deploy_dir ]] || { echo "ERROR: could not find ostree deploy dir" >&2; exit 1; }
     mkdir -p "$deploy_dir/etc"
     printf 'UUID=%s /boot auto ro 0 0\n' "$BOOT_UUID" > "$deploy_dir/etc/fstab"
+    # Mount the ESP so /KERNEL regen lands on the FAT the ABL reads, not a /boot dir.
+    printf 'UUID=%s /boot/efi vfat umask=0077,shortname=winnt 0 2\n' "$ESP_UUID" >> "$deploy_dir/etc/fstab"
     if [[ $ROOT_LAYOUT == subvol ]]; then
         printf 'UUID=%s /var btrfs %s,subvol=var 0 0\n' "$ROOT_UUID" "$BTRFS_OPTS" >> "$deploy_dir/etc/fstab"
         printf 'UUID=%s /var/home btrfs %s,subvol=home 0 0\n' "$ROOT_UUID" "$BTRFS_OPTS" >> "$deploy_dir/etc/fstab"
@@ -227,21 +242,24 @@ write_fstab() {
 }
 
 rewrite_bls() {
-    local entry boot_dir vmlinuz initramfs kernel_version ostree_arg options dtb karg
-    entry=$(find "$TARGET/boot/loader/entries" -maxdepth 1 -name '*.conf' | sort | head -n1)
+    local entry version linux initrd ostree_arg options karg bootdir
+    # Just-deployed = default = highest BLS version (as armada-bootimg-update picks);
+    # not the first file, so a reinstall with older entries rewrites the right one.
+    entry=$(for f in "$TARGET"/boot/loader/entries/*.conf; do
+                [[ -f $f ]] || continue
+                v=$(sed -n 's/^version //p' "$f" | head -1)
+                printf '%s\t%s\n' "${v:-0}" "$f"
+            done | sort -rn | head -1 | cut -f2)
     [[ -n $entry ]] || { echo "ERROR: no BLS entry created" >&2; exit 1; }
 
+    version=$(sed -n 's/^version //p' "$entry" | head -1)
+    linux=$(sed -n 's/^linux //p' "$entry" | head -1)
+    initrd=$(sed -n 's/^initrd //p' "$entry" | head -1)
     ostree_arg=$(grep -o 'ostree=[^ ]*' "$entry" | head -n1 || true)
-    [[ -n $ostree_arg ]] || { echo "ERROR: BLS entry missing ostree= option" >&2; exit 1; }
+    [[ -n $linux && -n $initrd && -n $ostree_arg ]] || { echo "ERROR: BLS entry incomplete" >&2; exit 1; }
+    [[ $linux == /boot/* ]] || linux="/boot${linux}"
+    [[ $initrd == /boot/* ]] || initrd="/boot${initrd}"
 
-    boot_dir=$(find "$TARGET/boot/ostree" -mindepth 1 -maxdepth 1 -type d -name 'default-*' | sort | head -n1)
-    [[ -n $boot_dir ]] || { echo "ERROR: no /boot/ostree deployment found" >&2; exit 1; }
-
-    vmlinuz=$(find "$boot_dir" -maxdepth 1 -name 'vmlinuz-*' -printf '%f\n' | sort | head -n1)
-    initramfs=$(find "$boot_dir" -maxdepth 1 -name 'initramfs-*.img' -printf '%f\n' | sort | head -n1)
-    [[ -n $vmlinuz && -n $initramfs ]] || { echo "ERROR: deployment missing kernel/initramfs" >&2; exit 1; }
-
-    kernel_version=${vmlinuz#vmlinuz-}
     options="root=UUID=${ROOT_UUID} rw boot=UUID=${BOOT_UUID}"
     while IFS= read -r karg; do
         if [[ $ROOT_LAYOUT == subvol && $karg == rootflags=* ]]; then
@@ -254,15 +272,16 @@ rewrite_bls() {
     fi
     options="${options} ${ostree_arg}"
 
-    dtb="/boot/ostree/${boot_dir##*/}/dtb/qcom/qcs8550-ayaneo-pocketevo.dtb"
-
+    # fdtdir (not a single devicetree): armada-bootimg-update reads this to find
+    # the DTBs it appends to /KERNEL, so the ABL model picker can pick among them.
+    bootdir=$(dirname "$linux")
     cat > "$entry" <<EOF
 title Armada
-version 1
+version ${version:-1}
 options ${options}
-linux /boot/ostree/${boot_dir##*/}/${vmlinuz}
-initrd /boot/ostree/${boot_dir##*/}/${initramfs}
-devicetree ${dtb}
+linux ${linux}
+initrd ${initrd}
+fdtdir ${bootdir}/dtb
 EOF
 }
 
@@ -314,8 +333,8 @@ deploy_to_internal() {
         fi
     done
 
-    mkfs.vfat -F 32 -n ROCKNIX "$ESP_PART" >/dev/null
-    mkfs.ext4 -F -L boot "$BOOT_PART" >/dev/null
+    # Determine/validate the ROOT layout BEFORE touching ESP/BOOT, so a reinstall
+    # never wipes the still-bootable ESP/BOOT until ARMADA_ROOT is confirmed reusable.
     if (( REFORMAT_ROOT )); then
         format_root
     elif [[ $(blkid -s TYPE -o value "$ROOT_PART") != btrfs ]]; then
@@ -327,9 +346,6 @@ deploy_to_internal() {
         ROOT_LAYOUT=legacy
     fi
 
-    ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
-    BOOT_UUID=$(blkid -s UUID -o value "$BOOT_PART")
-
     TARGET=$(mktemp -d -t armada-install.XXXXXX)
     trap 'umount -R "$TARGET" 2>/dev/null || true; rmdir "$TARGET" 2>/dev/null || true' EXIT
 
@@ -340,6 +356,13 @@ deploy_to_internal() {
         echo "ERROR: existing ARMADA_ROOT has no ostree repo; refusing to preserve unknown data" >&2
         exit 1
     fi
+
+    # ARMADA_ROOT is good; only now reformat the (re)bootable ESP + BOOT.
+    mkfs.vfat -F 32 -n ROCKNIX "$ESP_PART" >/dev/null
+    mkfs.ext4 -F -L boot "$BOOT_PART" >/dev/null
+    ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
+    BOOT_UUID=$(blkid -s UUID -o value "$BOOT_PART")
+    ESP_UUID=$(blkid -s UUID -o value "$ESP_PART")
 
     mkdir -p "$TARGET/boot"
     mount "$BOOT_PART" "$TARGET/boot"
@@ -354,10 +377,13 @@ deploy_to_internal() {
 
     ostree pull-local --repo="$TARGET/ostree/repo" /sysroot/ostree/repo "$commit"
     ostree admin deploy --sysroot="$TARGET" --os=default "$commit"
+    # Reinstall preserves the repo; drop deployments/objects this install orphaned.
+    ostree admin cleanup --sysroot="$TARGET" || true
 
     write_fstab
-    copy_bootloader_files
+    set_origin
     rewrite_bls
+    seed_kernel
     sync
 }
 
@@ -370,8 +396,8 @@ if [[ ! -b $DEVICE ]]; then
 fi
 
 case "$(root_source)" in
-    /dev/sda*)
-        echo "ERROR: already booted from internal storage; refusing to install over self" >&2
+    "$DEVICE"*)
+        echo "ERROR: already booted from $DEVICE; refusing to install over self" >&2
         exit 1
         ;;
 esac

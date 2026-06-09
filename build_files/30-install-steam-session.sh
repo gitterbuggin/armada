@@ -12,7 +12,6 @@ dnf5 -y install --setopt=install_weak_deps=False \
     vulkan-loader \
     vulkan-tools \
     gamemode \
-    tuned \
     gtk2 \
     openal-soft \
     xorg-x11-server-Xwayland \
@@ -98,12 +97,14 @@ curl -fsSL -o "/tmp/${PROTON_NAME}.sha512sum" "${PROTON_SHA512_URL}"
 cd /tmp
 sha512sum -c "${PROTON_NAME}.sha512sum"
 
-PROTON_DIR="${STEAM_HOME}/compatibilitytools.d"
+# Ship Proton in the image, not the user's /var home: /var is install-only on
+# bootc and custom compat tools don't self-update, so a home copy would freeze.
+PROTON_DIR="/usr/share/steam/compatibilitytools.d"
 mkdir -p "${PROTON_DIR}"
 tar -xJf "/tmp/${PROTON_TAR}" -C "${PROTON_DIR}/"
 # Missing runtime app makes Steam fall back to Proton 10.
 sed -i '/require_tool_appid/d' "${PROTON_DIR}/${PROTON_NAME}/toolmanifest.vdf"
-python3 /ctx/build_files/set-steam-default-compat.py "${STEAM_HOME}" "${PROTON_NAME}"
+python3 /ctx/build_files/set-steam-default-compat.py "${STEAM_HOME}" "${PROTON_NAME}" "${PROTON_DIR}"
 rm -f "/tmp/${PROTON_TAR}" "/tmp/${PROTON_NAME}.sha512sum"
 
 echo "Pre-staged: ARM64 Steam bootstrap + CachyOS Proton 11 ${PROTON_VER}"

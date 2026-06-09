@@ -19,5 +19,7 @@ kargs = [
 
     "cgroup.memory=nokmem,nosocket",
 
+    "cpufreq.default_governor=schedutil",
+
     "swiotlb=8192",
 ]

@@ -3,8 +3,9 @@ set -euxo pipefail
 
 cp -a /ctx/system_files/. /
 install -Dpm 0755 /ctx/vendor/inputplumber/inputplumber /usr/bin/inputplumber
+install -Dpm 0755 /ctx/vendor/mkbootimg/mkbootimg.py /usr/libexec/armada/mkbootimg.py
+install -Dpm 0755 /ctx/vendor/mkbootimg/gki/generate_gki_certificate.py /usr/libexec/armada/gki/generate_gki_certificate.py
 
-chmod 0755 /usr/bin/steamos-update
 chmod 0755 /usr/libexec/armada/*
 chmod 0755 /usr/libexec/os-session-select
 
@@ -19,7 +20,12 @@ systemctl enable armada-perf-paths.service
 systemctl enable armada-steamapps.service
 systemctl enable armada-game-watch.service
 systemctl enable armada-powerkey.service
-systemctl enable tuned.service
+systemctl enable armada-bootimg-sync.service
+
+# Updates are manual (Steam UI / steamos-update). The base image enables this
+# timer, which would auto-pull multi-GB images on metered tethering. Opt in with
+# `systemctl unmask --now bootc-fetch-apply-updates.timer`.
+systemctl mask bootc-fetch-apply-updates.timer
 
 # Sleep hangs on SM8550; suspend is redirected to fake-suspend, mask the rest.
 systemctl mask systemd-hibernate.service systemd-hybrid-sleep.service systemd-suspend-then-hibernate.service

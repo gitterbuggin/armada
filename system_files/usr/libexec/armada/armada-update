@@ -1,0 +1,45 @@
+#!/bin/bash
+# Steam UI update hook, invoked by the client as `steamos-update`. Maps the
+# Steam update contract onto `bootc upgrade` + ABL boot.img regeneration.
+# Exit codes: 0 = success / update available, 7 = nothing to do / failure.
+set -uo pipefail
+
+# Parse args before the first-run guard so the capability probe always answers.
+check=0
+for arg in "$@"; do
+    case "${arg}" in
+        --supports-duplicate-detection) exit 0 ;;
+        check) check=1 ;;
+    esac
+done
+
+# Swallow Steam's first update call: it fires one as gamemode starts, which would
+# strand the user mid first-boot. The probe and `check` above already returned.
+first_run=/var/lib/armada/first-steam-update
+if [ "${check}" = 0 ] && [ ! -e "${first_run}" ]; then
+    mkdir -p "$(dirname "${first_run}")"
+    : > "${first_run}"; sync "${first_run}" 2>/dev/null || true
+    exit 7
+fi
+
+command -v bootc >/dev/null || exit 7
+
+if [ "${check}" = 1 ]; then
+    bootc upgrade --check >/dev/null 2>&1 || exit 7
+    avail=$(bootc status --format json 2>/dev/null | python3 -c \
+        'import sys,json; print(1 if json.load(sys.stdin).get("status",{}).get("booted",{}).get("cachedUpdate") else 0)' 2>/dev/null || echo 0)
+    [ "${avail}" = 1 ] && exit 0 || exit 7
+fi
+
+# Bail before a multi-GB pull that would ENOSPC partway through.
+avail_b=$(df -B1 --output=avail /var 2>/dev/null | tail -1)
+if [ "${avail_b:-0}" -lt $((5 * 1024 * 1024 * 1024)) ]; then
+    echo "armada-update: under 5 GB free on /var, skipping update" >&2
+    exit 7
+fi
+
+# Stage the upgrade only. /KERNEL is regenerated for the *finalized* deployment
+# by armada-bootimg-sync.service at shutdown — doing it here would target the
+# still-staged (old) deployment. Report a real failure to Steam as 7.
+bootc upgrade || exit 7
+exit 0

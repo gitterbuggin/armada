@@ -92,12 +92,12 @@ def set_display_name(compatibilitytool_path):
 
 
 def main():
-    if len(sys.argv) != 3:
-        raise SystemExit("usage: set-steam-default-compat.py STEAM_HOME TOOL_NAME")
+    if len(sys.argv) != 4:
+        raise SystemExit("usage: set-steam-default-compat.py STEAM_HOME TOOL_NAME COMPAT_DIR")
 
     steam_home = pathlib.Path(sys.argv[1])
     tool_name = sys.argv[2]
-    tool_dir = steam_home / "compatibilitytools.d" / tool_name
+    tool_dir = pathlib.Path(sys.argv[3]) / tool_name
 
     set_display_name(tool_dir / "compatibilitytool.vdf")
     set_default_compat(steam_home / "config" / "config.vdf", tool_name)

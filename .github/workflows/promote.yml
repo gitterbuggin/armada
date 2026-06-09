@@ -1,0 +1,77 @@
+---
+name: Promote channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Channel to promote to"
+        type: choice
+        options: [beta, stable]
+        required: true
+      source:
+        description: "Source tag to promote from (e.g. testing or testing.20260608)"
+        type: string
+        default: testing
+      version:
+        description: "Optional release version (e.g. 1.0). Set when cutting a release: keeps an immutable :<version> tag as the permanent pin for the downloadable disk image."
+        type: string
+        default: ""
+
+env:
+  IMAGE_NAME: ${{ github.event.repository.name }}
+  IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote ${{ inputs.source }} -> ${{ inputs.target }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Prepare environment
+        run: |
+          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> "${GITHUB_ENV}"
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "${GITHUB_ENV}"
+          command -v skopeo >/dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Refuse to promote an unsigned image
+        run: |
+          set -euxo pipefail
+          REPO="${IMAGE_REGISTRY}/${IMAGE_NAME}"
+          # Fail closed: never promote an unsigned build into beta/stable.
+          cosign verify --key system_files/etc/pki/containers/armada.pub "${REPO}:${{ inputs.source }}"
+
+      - name: Promote (retag — preserves digest, so the cosign signature carries)
+        run: |
+          set -euxo pipefail
+          REPO="${IMAGE_REGISTRY}/${IMAGE_NAME}"
+          promote() { skopeo copy --all "docker://${REPO}:${{ inputs.source }}" "docker://${REPO}:$1"; }
+
+          promote "${{ inputs.target }}"
+
+          # stable doubles as :latest for tooling that expects it.
+          if [ "${{ inputs.target }}" = stable ]; then
+            promote latest
+          fi
+
+          # Release pin: an immutable tag that never moves, for the published image.
+          if [ -n "${{ inputs.version }}" ]; then
+            promote "${{ inputs.version }}"
+          fi

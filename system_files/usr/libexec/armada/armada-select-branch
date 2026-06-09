@@ -1,0 +1,34 @@
+#!/bin/bash
+# Steam UI "OS Update Channel" hook (invoked as steamos-select-branch). Each
+# channel is a tag on the ghcr image (…/armada:stable|beta|testing); selecting
+# one points bootc at that tag, and updates then follow it.
+set -uo pipefail
+
+REGISTRY="ghcr.io/virtudude/armada"
+CHANNELS="stable beta testing"
+
+case "${1:-}" in
+    -l)
+        for c in ${CHANNELS}; do echo "${c}"; done
+        ;;
+    -c)
+        # Tag = the part after the last ':' of the final path component, after
+        # dropping any @digest. Avoids mis-reading a registry port or digest pin.
+        tag=$(bootc status --format json 2>/dev/null | python3 -c '
+import sys, json
+ref = json.load(sys.stdin)["spec"]["image"]["image"].split("@", 1)[0]
+name = ref.rsplit("/", 1)[-1]
+print(name.rsplit(":", 1)[1] if ":" in name else "")' 2>/dev/null || true)
+        case " ${CHANNELS} " in
+            *" ${tag} "*) echo "${tag}" ;;
+            *) echo "stable" ;;
+        esac
+        ;;
+    stable|beta|testing)
+        exec bootc switch "${REGISTRY}:${1}"
+        ;;
+    *)
+        echo "usage: steamos-select-branch <-c|-l|stable|beta|testing>" >&2
+        exit 1
+        ;;
+esac
