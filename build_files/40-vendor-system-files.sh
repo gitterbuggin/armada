@@ -27,5 +27,6 @@ systemctl enable armada-bootimg-sync.service
 # `systemctl unmask --now bootc-fetch-apply-updates.timer`.
 systemctl mask bootc-fetch-apply-updates.timer
 
-# Sleep hangs on SM8550; suspend is redirected to fake-suspend, mask the rest.
-systemctl mask systemd-hibernate.service systemd-hybrid-sleep.service systemd-suspend-then-hibernate.service
+# Real S3 hangs on SM8550, and routing idle suspend through logind races the
+# gamescope freeze. Mask all sleep services; the power button drives fake-suspend.
+systemctl mask systemd-suspend.service systemd-hibernate.service systemd-hybrid-sleep.service systemd-suspend-then-hibernate.service

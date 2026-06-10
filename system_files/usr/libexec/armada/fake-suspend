@@ -49,6 +49,25 @@ display_on() {
 mute_audio()   { as_session wpctl set-mute @DEFAULT_AUDIO_SINK@ 1 2>/dev/null || true; }
 unmute_audio() { as_session wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null || true; }
 
+# Resume sometimes brings the backlight back dark; restore the pre-sleep level.
+save_brightness() {
+    local b n
+    for b in /sys/class/backlight/*/brightness; do
+        [[ -r "$b" ]] || continue
+        n="$(basename "$(dirname "$b")")"
+        cat "$b" > "$SAVE_DIR/brightness.$n" 2>/dev/null || true
+    done
+}
+restore_brightness() {
+    local f n b
+    for f in "$SAVE_DIR"/brightness.*; do
+        [[ -f "$f" ]] || continue
+        n="${f##*/brightness.}"
+        b="/sys/class/backlight/$n/brightness"
+        [[ -w "$b" ]] && cat "$f" > "$b" 2>/dev/null || true
+    done
+}
+
 # EBUSY on InputPlumber source nodes is fine.
 INPUT_WHITELIST='pmic_pwrkey'
 
@@ -99,6 +118,7 @@ do_suspend() {
     log "entering fake suspend"
     mkdir -p "$SAVE_DIR"
     touch "$STATE_FLAG"
+    save_brightness
     mute_audio
     block_input
     display_off
@@ -108,12 +128,15 @@ do_suspend() {
 }
 do_resume() {
     log "leaving fake suspend"
-    /usr/libexec/armada/power-control resume
+    # Release clocks/freeze/input before the display (the step most likely to wedge)
+    # and clear the flag last, so a hung display_on can't strand the device.
     pkill -CONT -f '/usr/libexec/armada/game-watch' 2>/dev/null || true
+    /usr/libexec/armada/power-control resume
     unfreeze_processes
-    display_on
     unblock_input
     unmute_audio
+    display_on
+    restore_brightness
     rm -f "$STATE_FLAG"
     rm -rf "$SAVE_DIR"
 }

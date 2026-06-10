@@ -14,6 +14,7 @@ fi
 SAVE=/run/armada/power-control.suspend-save
 gpu_max=$(cat "$GPU/max_freq")
 gpu_stock_min=$(tr ' ' '\n' < "$GPU/available_frequencies" | grep -E '^[0-9]+$' | sort -n | head -1)
+gpu_stock_max=$(tr ' ' '\n' < "$GPU/available_frequencies" | grep -E '^[0-9]+$' | sort -n | tail -1)
 floor=$(( ${ARMADA_GPU_GAME_FLOOR_MHZ:-680} * 1000000 ))
 if (( floor > gpu_max )); then floor=$gpu_max; fi
 
@@ -23,6 +24,8 @@ case "${1:-balanced}" in
     game)     w "$floor" "$GPU/min_freq" ;;
     balanced) w "$gpu_stock_min" "$GPU/min_freq" ;;
     suspend)
+        # Don't re-save over already-clamped values if a prior suspend didn't resume.
+        [[ -f "$SAVE" ]] && exit 0
         mkdir -p "$(dirname "$SAVE")"
         : > "$SAVE"
         for p in /sys/devices/system/cpu/cpufreq/policy*/; do
@@ -38,14 +41,22 @@ case "${1:-balanced}" in
         done
         ;;
     resume)
-        [[ -f "$SAVE" ]] || exit 0
-        gmax=$(awk '$1=="gpu_max"{print $2}' "$SAVE")
-        gmin=$(awk '$1=="gpu_min"{print $2}' "$SAVE")
-        [[ -n "$gmax" ]] && w "$gmax" "$GPU/max_freq"
-        [[ -n "$gmin" ]] && w "$gmin" "$GPU/min_freq"
-        while read -r tag p val; do
-            [[ "$tag" == cpu_max && -n "${val:-}" ]] && w "$val" "$p/scaling_max_freq"
-        done < "$SAVE"
+        # Fall back to hardware max if the save is missing/stale — never leave clocks clamped.
+        gmax=""; gmin=""
+        if [[ -f "$SAVE" ]]; then
+            gmax=$(awk '$1=="gpu_max"{print $2}' "$SAVE")
+            gmin=$(awk '$1=="gpu_min"{print $2}' "$SAVE")
+        fi
+        [[ -n "$gmax" ]] || gmax="$gpu_stock_max"
+        [[ -n "$gmin" ]] || gmin="$gpu_stock_min"
+        w "$gmax" "$GPU/max_freq"
+        w "$gmin" "$GPU/min_freq"
+        for p in /sys/devices/system/cpu/cpufreq/policy*/; do
+            val=""
+            [[ -f "$SAVE" ]] && val=$(awk -v pp="$p" '$1=="cpu_max" && $2==pp {print $3}' "$SAVE")
+            [[ -n "$val" ]] || val=$(cat "$p/cpuinfo_max_freq" 2>/dev/null || true)
+            [[ -n "$val" ]] && w "$val" "$p/scaling_max_freq"
+        done
         rm -f "$SAVE"
         ;;
     status)
