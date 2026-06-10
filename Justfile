@@ -92,7 +92,11 @@ _rootful_load_image $target_image=image_name $tag=default_tag:
     set -eoux pipefail
 
     if [[ -n "${SUDO_USER:-}" || "${UID}" -eq "0" ]]; then
-        echo "Already root or running under sudo, no need to load image from user podman."
+        # Always re-pull a remote tag so the disk uses the freshly published
+        # image, not a stale cached one; localhost builds are already loaded.
+        if [[ "${target_image}" != localhost/* ]]; then
+            just sudoif podman pull "${target_image}:${tag}"
+        fi
         exit 0
     fi
 
