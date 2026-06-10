@@ -1,14 +1,28 @@
 #!/usr/bin/bash
 set -euo pipefail
+source /usr/lib/armada/bootimg-args
 
+ARMADA_REGISTRY="ghcr.io/virtudude/armada"
 DEVICE="${ARMADA_INTERNAL_DEVICE:-/dev/sda}"
 ESP_GUID="c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
 ESP_MIB=512
 BOOT_MIB=1024
 ROOT_MIN_MIB=$((32 * 1024))
 REFORMAT_ROOT=0
+destructive=0
+TARGET=""
 BTRFS_OPTS="noatime,compress=zstd:1,discard=async,space_cache=v2"
 ROOT_LAYOUT=legacy
+
+# Installed before any destructive step (fresh-path repartition or mkfs), so a
+# failure after internal storage is modified surfaces the recovery instructions
+# rather than leaving the user with an unbootable device and no guidance.
+cleanup() {
+    local rc=$?
+    [[ -n "$TARGET" ]] && { umount -R "$TARGET" 2>/dev/null || true; rmdir "$TARGET" 2>/dev/null || true; }
+    [[ $rc -ne 0 && $destructive == 1 ]] && echo "ERROR: install did not finish after internal storage was modified — do NOT boot internal storage; recover with a PC: fastboot erase ROCKNIX, then reflash the SD card." >&2
+    exit $rc
+}
 
 need_root() {
     if [[ $EUID -ne 0 ]]; then
@@ -161,6 +175,9 @@ EOF
         umount "$UD_PART"
     fi
 
+    # Past this point the original Android userdata partition is gone — a failure
+    # leaves no bootable internal layout, so arm the recovery message.
+    destructive=1
     parted -s "$DEVICE" rm "$UD_NUM"
     parted -a optimal -s "$DEVICE" mkpart primary ext4 "${UD_START_MIB}MiB" "${new_ud_end_mib}MiB"
     parted -s "$DEVICE" name "$UD_NUM" userdata
@@ -214,15 +231,17 @@ set_origin() {
         return
     fi
     cp -f "$src" "$dst"
-    # Only helps if the booted image tracks ghcr; a local build's origin won't.
+    local ref bare
     ref=$(sed -n 's/^container-image-reference=//p' "$dst" | head -1)
-    if [[ $ref != *ghcr.io/* ]]; then
-        echo "WARNING: bootc origin is '${ref:-<none>}', not a ghcr image — OTA updates will NOT work on this install (expected for a locally-built image)." >&2
+    # Only our signed ghcr image can verify + OTA; anything else (local build) is
+    # left as-is with a warning, not rewritten into a will-reject origin.
+    if [[ $ref != *${ARMADA_REGISTRY}[:@]* ]]; then
+        echo "WARNING: bootc origin is '${ref:-<none>}', not ${ARMADA_REGISTRY} — OTA updates will NOT work on this install (expected for a locally-built image)." >&2
         return
     fi
-    # Force the signed reference so the internal install verifies the cosign
-    # signature on upgrade, even if the booted origin was still unverified.
-    bare=${ref#*:}; bare=${bare#docker://}
+    # Anchor to the repo so any transport prefix / @digest form rewrites cleanly to
+    # the signed reference, so the internal install verifies the cosign signature.
+    bare="${ARMADA_REGISTRY}${ref##*${ARMADA_REGISTRY}}"
     sed -i "s|^container-image-reference=.*|container-image-reference=ostree-image-signed:docker://${bare}|" "$dst"
 }
 
@@ -248,13 +267,9 @@ write_fstab() {
 
 rewrite_bls() {
     local entry version linux initrd ostree_arg options karg bootdir
-    # Just-deployed = default = highest BLS version (as armada-bootimg-update picks);
-    # not the first file, so a reinstall with older entries rewrites the right one.
-    entry=$(for f in "$TARGET"/boot/loader/entries/*.conf; do
-                [[ -f $f ]] || continue
-                v=$(sed -n 's/^version //p' "$f" | head -1)
-                printf '%s\t%s\n' "${v:-0}" "$f"
-            done | sort -rn | head -1 | cut -f2)
+    # Just-deployed = default = highest BLS version (same helper armada-bootimg-update
+    # uses), so a reinstall with older entries rewrites the right one.
+    entry=$(armada_default_bls_entry "$TARGET/boot")
     [[ -n $entry ]] || { echo "ERROR: no BLS entry created" >&2; exit 1; }
 
     version=$(sed -n 's/^version //p' "$entry" | head -1)
@@ -352,7 +367,6 @@ deploy_to_internal() {
     fi
 
     TARGET=$(mktemp -d -t armada-install.XXXXXX)
-    trap 'umount -R "$TARGET" 2>/dev/null || true; rmdir "$TARGET" 2>/dev/null || true' EXIT
 
     mount_root
     if (( REFORMAT_ROOT )); then
@@ -362,7 +376,9 @@ deploy_to_internal() {
         exit 1
     fi
 
-    # ARMADA_ROOT is good; only now reformat the (re)bootable ESP + BOOT.
+    # ARMADA_ROOT is good; only now reformat the (re)bootable ESP + BOOT. Past this
+    # point a failure leaves no bootable boot.img — the trap surfaces the recovery.
+    destructive=1
     mkfs.vfat -F 32 -n ROCKNIX "$ESP_PART" >/dev/null
     mkfs.ext4 -F -L boot "$BOOT_PART" >/dev/null
     ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
@@ -406,6 +422,8 @@ case "$(root_source)" in
         exit 1
         ;;
 esac
+
+trap cleanup EXIT
 
 mode=$(detect_mode)
 case "$mode" in

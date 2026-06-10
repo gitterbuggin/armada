@@ -1,8 +1,8 @@
 #!/bin/bash
-# Steam UI update hook, invoked by the client as `steamos-update`. Maps the
-# Steam update contract onto `bootc upgrade` + ABL boot.img regeneration.
-# Exit codes: 0 = success / update available, 7 = nothing to do / failure.
+# Steam UI update hook (steamos-update): apply the selected channel via bootc
+# (switch on change, else upgrade), reporting N% to Steam. Exit 0=ok, 7=none/fail.
 set -uo pipefail
+source /usr/lib/armada/update-lib
 
 # Parse args before the first-run guard so the capability probe always answers.
 check=0
@@ -24,22 +24,46 @@ fi
 
 command -v bootc >/dev/null || exit 7
 
+booted_ref=$(armada_booted_ref)
+booted=$(armada_tag_from_ref "$booted_ref")
+desired=$(armada_desired_channel "$booted")
+case "$booted_ref" in ostree-image-signed:*) verified=1 ;; *) verified=0 ;; esac
+
 if [ "${check}" = 1 ]; then
+    if [ "${desired}" != "${booted}" ]; then
+        # Pending channel switch is an available update unless it's already staged.
+        [ "$(armada_tag_from_ref "$(armada_staged_ref)")" = "${desired}" ] && exit 7
+        exit 0
+    fi
     bootc upgrade --check >/dev/null 2>&1 || exit 7
     avail=$(bootc status --format json 2>/dev/null | python3 -c \
         'import sys,json; print(1 if json.load(sys.stdin).get("status",{}).get("booted",{}).get("cachedUpdate") else 0)' 2>/dev/null || echo 0)
     [ "${avail}" = 1 ] && exit 0 || exit 7
 fi
 
-# Bail before a multi-GB pull that would ENOSPC partway through.
-avail_b=$(df -B1 --output=avail /var 2>/dev/null | tail -1)
+# Bail if there isn't enough free disk space.
+avail_b=$(df -B1 --output=avail /var 2>/dev/null | tail -1 | tr -dc '0-9')
 if [ "${avail_b:-0}" -lt $((5 * 1024 * 1024 * 1024)) ]; then
     echo "armada-update: under 5 GB free on /var, skipping update" >&2
     exit 7
 fi
 
-# Stage the upgrade only. /KERNEL is regenerated for the *finalized* deployment
-# by armada-bootimg-sync.service at shutdown — doing it here would target the
-# still-staged (old) deployment. Report a real failure to Steam as 7.
-bootc upgrade || exit 7
+staged=$(armada_tag_from_ref "$(armada_staged_ref)")
+
+# Stage only; /KERNEL is regenerated for the finalized deployment at shutdown by
+# armada-bootimg-sync. Switch on a channel change, a stale stage, or to re-assert a
+# verified origin; else upgrade in place. desired is validated (stable|beta|testing).
+if [ -n "${staged}" ] && [ "${staged}" = "${desired}" ] && [ "${desired}" != "${booted}" ]; then
+    exit 0   # the desired channel switch is already staged for next boot
+elif [ "${desired}" != "${booted}" ] || { [ -n "${staged}" ] && [ "${staged}" != "${desired}" ]; } || [ "${verified}" = 0 ]; then
+    if ! armada_bootc_with_progress bootc switch --enforce-container-sigpolicy "${ARMADA_REGISTRY}:${desired}"; then
+        # Target tag may not exist (e.g. unpublished channel) — revert so we don't nag forever.
+        mkdir -p "$(dirname "${ARMADA_CHANNEL_STATE}")" 2>/dev/null
+        printf '%s\n' "${booted}" > "${ARMADA_CHANNEL_STATE}" 2>/dev/null \
+            || echo "armada-update: could not revert channel state to ${booted}" >&2
+        exit 7
+    fi
+else
+    armada_bootc_with_progress bootc upgrade || exit 7
+fi
 exit 0

@@ -107,4 +107,9 @@ sed -i '/require_tool_appid/d' "${PROTON_DIR}/${PROTON_NAME}/toolmanifest.vdf"
 python3 /ctx/build_files/set-steam-default-compat.py "${STEAM_HOME}" "${PROTON_NAME}" "${PROTON_DIR}"
 rm -f "/tmp/${PROTON_TAR}" "/tmp/${PROTON_NAME}.sha512sum"
 
+# Pin Steam + Proton to their own rechunk layers (build-chunked-oci reads the
+# user.component xattr) so a system_files change doesn't re-pull them every OTA.
+python3 -c 'import os,sys; os.setxattr(sys.argv[1],"user.component",b"steam")' "${STEAM_HOME}"
+python3 -c 'import os,sys; os.setxattr(sys.argv[1],"user.component",b"proton")' "${PROTON_DIR}/${PROTON_NAME}"
+
 echo "Pre-staged: ARM64 Steam bootstrap + CachyOS Proton 11 ${PROTON_VER}"

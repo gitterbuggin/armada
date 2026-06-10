@@ -1,44 +1,19 @@
 #!/bin/bash
-# Steam UI "OS Update Channel" hook (steamos-select-branch). Steam only accepts
-# Valve's branch tokens (rel/beta/main), so we map them to our ghcr channel tags.
+# Steam UI "OS Update Channel" hook (steamos-select-branch). Records the chosen
+# channel; steamos-update does the download later, so it shows a progress bar.
 set -uo pipefail
-
-REGISTRY="ghcr.io/virtudude/armada"
-
-steam_to_channel() {
-    case "$1" in
-        rel|latest|stable) echo stable ;;
-        beta)              echo beta ;;
-        rc|bc|main|testing) echo testing ;;
-        *) return 1 ;;
-    esac
-}
-
-channel_to_steam() {
-    case "$1" in
-        beta)    echo beta ;;
-        testing) echo main ;;
-        *)       echo rel ;;
-    esac
-}
+source /usr/lib/armada/update-lib
 
 case "${1:-}" in
     -l)
-        printf '%s\n' rel beta main
+        for ch in ${ARMADA_CHANNELS}; do armada_channel_to_token "$ch"; done
         ;;
     -c)
-        # rpm-ostree runs unprivileged (Steam invokes us as the session user);
-        # bootc status needs root and would always fall through to the default.
-        tag=$(rpm-ostree status --booted --json 2>/dev/null | python3 -c '
-import sys, json
-ref = json.load(sys.stdin)["deployments"][0]["container-image-reference"].split("@", 1)[0]
-name = ref.rsplit("/", 1)[-1]
-print(name.rsplit(":", 1)[1] if ":" in name else "")' 2>/dev/null || true)
-        channel_to_steam "$tag"
+        armada_channel_to_token "$(armada_desired_channel)"
         ;;
     *)
-        channel=$(steam_to_channel "$1") || { echo "usage: steamos-select-branch <-l|-c|rel|beta|main>" >&2; exit 1; }
-        # --enforce-container-sigpolicy → verified ostree-image-signed origin (cosign-checked).
-        exec bootc switch --enforce-container-sigpolicy "${REGISTRY}:${channel}"
+        channel=$(armada_token_to_channel "$1") || { echo "usage: steamos-select-branch <-l|-c|rel|beta|main>" >&2; exit 1; }
+        mkdir -p "$(dirname "$ARMADA_CHANNEL_STATE")"
+        printf '%s\n' "$channel" > "$ARMADA_CHANNEL_STATE"
         ;;
 esac
