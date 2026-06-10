@@ -16,6 +16,9 @@ done
 install -d -m 0700 -o armada -g armada /var/home/armada
 chown -R armada:armada /var/home/armada
 chmod 0700 /var/home/armada
+install -Dpm 0755 -o armada -g armada \
+    /usr/share/applications/armada-return-to-gamemode.desktop \
+    /var/home/armada/Desktop/armada-return-to-gamemode.desktop
 
 echo 'armada:armada' | chpasswd
 

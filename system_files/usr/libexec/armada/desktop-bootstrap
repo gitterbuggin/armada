@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+set -euo pipefail
+
+[[ ${XDG_SESSION_TYPE:-} == wayland ]] || exit 0
+
+config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/armada"
+scale_done="${config_dir}/desktop-scale.done"
+
+[[ ! -e "${scale_done}" ]] || exit 0
+mkdir -p "${config_dir}"
+
+for _ in {1..5}; do
+    kscreen-doctor -o >/dev/null 2>&1 && break
+    sleep 2
+done
+
+if kscreen-doctor output.DSI-1.scale.1.5 >/dev/null 2>&1; then
+    touch "${scale_done}"
+fi

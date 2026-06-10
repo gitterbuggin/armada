@@ -40,6 +40,7 @@ dnf5 -y install --setopt=install_weak_deps=False \
     plymouth \
     plymouth-system-theme \
     plymouth-theme-spinner \
+    qt6-qttools \
     qt6-qtvirtualkeyboard \
     seatd
 
@@ -54,5 +55,18 @@ dnf5 -y install --setopt=install_weak_deps=False \
 dnf5 -y install --setopt=install_weak_deps=False \
     plasma-workspace \
     plasma-desktop \
+    kscreen \
     konsole \
     dolphin
+
+dnf5 -y install --setopt=install_weak_deps=False \
+    --repofrompath 'copr-ublue-os-packages,https://download.copr.fedorainfracloud.org/results/ublue-os/packages/fedora-$releasever-$basearch/' \
+    --setopt=copr-ublue-os-packages.gpgcheck=0 \
+    --setopt=copr-ublue-os-packages.repo_gpgcheck=0 \
+    flatpak \
+    bazaar \
+    krunner-bazaar
+
+mkdir -p /etc/flatpak/remotes.d
+curl --retry 3 -fsSL -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
+    https://dl.flathub.org/repo/flathub.flatpakrepo

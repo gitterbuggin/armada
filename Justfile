@@ -189,6 +189,7 @@ build-iso $target_image=("localhost/" + image_name) $tag=default_tag: && (_build
 [group('Armada')]
 build-armada-image $target_image=("localhost/" + image_name) $tag=default_tag: (build-raw target_image tag)
     @echo "Finalizing the freshly-built raw image..."
+    ./post_process/preseed-flatpaks.sh output/image/disk.raw
     ./post_process/make-bootimg.sh output/image/disk.raw
     ./post_process/finalize-armada-image.sh output/image/disk.raw
 

@@ -5,9 +5,13 @@ cp -a /ctx/system_files/. /
 install -Dpm 0755 /ctx/vendor/inputplumber/inputplumber /usr/bin/inputplumber
 install -Dpm 0755 /ctx/vendor/mkbootimg/mkbootimg.py /usr/libexec/armada/mkbootimg.py
 install -Dpm 0755 /ctx/vendor/mkbootimg/gki/generate_gki_certificate.py /usr/libexec/armada/gki/generate_gki_certificate.py
+install -Dpm 0755 /ctx/vendor/extest/libextest.so /usr/lib/extest/libextest.so
 
 chmod 0755 /usr/libexec/armada/*
 chmod 0755 /usr/libexec/os-session-select
+
+sed -i '/const allPanels/,$d' /usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js
+sed -i '$r /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/armada-pins.js' /usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js
 
 find /etc/NetworkManager/system-connections -name '*.nmconnection' -exec chmod 0600 {} + -exec chown root:root {} + 2>/dev/null || true
 
@@ -21,6 +25,7 @@ systemctl enable armada-steamapps.service
 systemctl enable armada-game-watch.service
 systemctl enable armada-power-switch.service
 systemctl enable armada-bootimg-sync.service
+systemctl enable armada-flatpak-setup.service
 
 # Updates are manual (Steam UI / steamos-update). The base image enables this
 # timer, which would auto-pull multi-GB images on metered tethering. Opt in with

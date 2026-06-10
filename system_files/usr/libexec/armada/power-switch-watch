@@ -6,6 +6,10 @@ LOG_TAG="armada-power-switch"
 log() { logger -t "$LOG_TAG" -- "$*"; }
 source /usr/lib/armada/input-lib
 
+in_plasma() {
+    pgrep -u armada -x kwin_wayland >/dev/null 2>&1
+}
+
 dev_is_power() {
     local name
     name="$(cat "/sys/class/input/$(basename "$1")/device/name" 2>/dev/null)" || return 1
@@ -30,7 +34,9 @@ handle() {
     while read -r line; do
         case "$line" in
             *"(KEY_POWER), value 1"*)
-                if armada_lid_closed; then
+                if in_plasma; then
+                    log "power pressed in plasma -> ignored"
+                elif armada_lid_closed; then
                     log "power pressed but lid closed -> ignored"
                 else
                     log "power -> toggle fake suspend"
