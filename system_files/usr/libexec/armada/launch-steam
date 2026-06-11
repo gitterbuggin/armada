@@ -29,7 +29,6 @@ export LD_LIBRARY_PATH="${steam_ld_path}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 cd "${steam_arm_dir}"
 exec "${steam_arm}" \
-    -nobootstrapupdate \
-    -skipinitialbootstrap \
+    -testoobeupdater \
     "${steam_args[@]}" \
     "$@"

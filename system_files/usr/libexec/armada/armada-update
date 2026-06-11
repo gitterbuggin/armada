@@ -19,6 +19,7 @@ first_run=/var/lib/armada/first-steam-update
 if [ "${check}" = 0 ] && [ ! -e "${first_run}" ]; then
     mkdir -p "$(dirname "${first_run}")"
     : > "${first_run}"; sync "${first_run}" 2>/dev/null || true
+    systemctl restart graphical.target
     exit 7
 fi
 
