@@ -10,14 +10,14 @@ armada_token_to_channel() {
     case "$1" in
         rel|latest|stable) echo stable ;;
         beta)               echo beta ;;
-        rc|bc|main|testing) echo testing ;;
+        rc|bc|main|preview|testing) echo testing ;;
         *) return 1 ;;
     esac
 }
 armada_channel_to_token() {
     case "$1" in
         beta)    echo beta ;;
-        testing) echo main ;;
+        testing) echo preview ;;
         *)       echo rel ;;
     esac
 }
