@@ -117,6 +117,9 @@ jobs:
           # containers-storage, so bridge the rootless-built image over first.
           skopeo copy "containers-storage:localhost/${IMAGE_NAME}:raw" oci-archive:/tmp/raw.tar
           sudo skopeo copy oci-archive:/tmp/raw.tar containers-storage:localhost/raw-img
+          # Free disk before the encapsulate; both are unused once raw-img exists.
+          rm -f /tmp/raw.tar
+          podman rmi "localhost/${IMAGE_NAME}:raw" 2>/dev/null || true
           sudo podman run --rm --privileged \
             --volume /var/lib/containers:/var/lib/containers \
             localhost/raw-img \
