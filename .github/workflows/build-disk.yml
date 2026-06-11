@@ -7,8 +7,8 @@ on:
       tag:
         description: "Channel to build the flashable disk image from"
         type: choice
-        options: [stable, beta, testing]
-        default: stable
+        options: [beta, stable, testing]
+        default: beta
 
 env:
   IMAGE_NAME: ${{ github.event.repository.name }}
