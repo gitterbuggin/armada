@@ -4,15 +4,6 @@
 set -uo pipefail
 source /usr/lib/armada/update-lib
 
-# Swallow Steam's first update call on a fresh boot.
-first_run=/var/lib/armada/first-steam-update
-if [ ! -e "${first_run}" ]; then
-    mkdir -p "$(dirname "${first_run}")"
-    : > "${first_run}"; sync "${first_run}" 2>/dev/null || true
-    systemctl restart graphical.target
-    exit 7
-fi
-
 check=0
 for arg in "$@"; do
     case "${arg}" in
