@@ -4,7 +4,15 @@
 set -uo pipefail
 source /usr/lib/armada/update-lib
 
-# Parse args before the first-run guard so the capability probe always answers.
+# Swallow Steam's first update call on a fresh boot.
+first_run=/var/lib/armada/first-steam-update
+if [ ! -e "${first_run}" ]; then
+    mkdir -p "$(dirname "${first_run}")"
+    : > "${first_run}"; sync "${first_run}" 2>/dev/null || true
+    systemctl restart graphical.target
+    exit 7
+fi
+
 check=0
 for arg in "$@"; do
     case "${arg}" in
@@ -12,16 +20,6 @@ for arg in "$@"; do
         check) check=1 ;;
     esac
 done
-
-# Swallow Steam's first update call: it fires one as gamemode starts, which would
-# strand the user mid first-boot. The probe and `check` above already returned.
-first_run=/var/lib/armada/first-steam-update
-if [ "${check}" = 0 ] && [ ! -e "${first_run}" ]; then
-    mkdir -p "$(dirname "${first_run}")"
-    : > "${first_run}"; sync "${first_run}" 2>/dev/null || true
-    systemctl restart graphical.target
-    exit 7
-fi
 
 command -v bootc >/dev/null || exit 7
 
