@@ -77,7 +77,7 @@ jobs:
             promote latest
           fi
 
-          # Release pin is stable-only; channels (testing/beta) stay bare pointers.
-          if [ "${{ inputs.target }}" = stable ] && [ -n "${{ inputs.version }}" ]; then
+          # Tag the release.
+          if [ -n "${{ inputs.version }}" ]; then
             promote "${{ inputs.version }}"
           fi
