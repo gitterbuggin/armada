@@ -36,7 +36,6 @@ Includes:
 | AYN Odin 2 Mini | SM8550 | ✅ Supported and tested |
 | AYN Odin 2 | SM8550 | ✅ Supported and tested |
 | AYN Thor | SM8550 | ✅ Supported and tested |
-| AYN Odin 3 | SM8750 | ⚠️ Untested try at own risk |
 | Retroid Pocket 6 | SM8550 | ⚠️ Untested try at own risk |
 | AYANEO Pocket ACE | SM8550 | ⚠️ Untested try at own risk |
 | AYANEO Pocket DMG | SM8550 | ⚠️ Untested try at own risk |
