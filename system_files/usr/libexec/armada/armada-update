@@ -12,6 +12,11 @@ for arg in "$@"; do
     esac
 done
 
+# Defer updates until a user has signed into Steam, so an update never downloads mid-onboarding.
+if ! grep -qs '"AccountName"' /var/home/armada/.local/share/Steam/config/loginusers.vdf; then
+    exit 7
+fi
+
 command -v bootc >/dev/null || exit 7
 
 booted_ref=$(armada_booted_ref)
