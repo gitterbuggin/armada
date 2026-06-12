@@ -115,6 +115,8 @@ export HOME="${STEAM_BOOTSTRAP_HOME}"
 export DISPLAY=:99
 export LD_LIBRARY_PATH="${STEAM}/steamrtarm64:${STEAM}/lib/aarch64-linux-gnu"
 
+installed_manifest="${STEAM}/package/${STEAM_ARM_MANIFEST_NAME}.installed"
+
 set +e
 timeout "${STEAM_BOOTSTRAP_TIMEOUT}" \
     "${STEAM}/steamrtarm64/steam" \
@@ -132,6 +134,15 @@ fi
 
 if [[ ! -x "${STEAM}/steamrtarm64/steam" || ! -f "${STEAM}/steamrtarm64/steamui.so" ]]; then
     echo "ERROR: Steam bootstrap did not produce a complete ARM64 Steam tree" >&2
+    exit 1
+fi
+
+if [[ ! -f "${installed_manifest}" ]]; then
+    echo "ERROR: Steam bootstrap produced no .installed manifest (last rc ${steam_rc}); the seed would re-install on first boot" >&2
+    echo "--- last bootstrap stdout (tail) ---" >&2
+    tail -n 30 /tmp/armada-steam-bootstrap.stdout >&2 || true
+    echo "--- last bootstrap stderr (tail) ---" >&2
+    tail -n 30 /tmp/armada-steam-bootstrap.stderr >&2 || true
     exit 1
 fi
 
@@ -153,4 +164,4 @@ rm -f \
 
 package_count=$(find "${STEAM}/package" -maxdepth 1 -type f | wc -l)
 zipvz_count=$(find "${STEAM}/package" -maxdepth 1 -type f -name '*.zip.vz.*' | wc -l)
-echo "Generated ARM64 Steam bootstrap: ${package_count} package files, ${zipvz_count} compressed payloads, updater rc ${steam_rc}"
+echo "Generated ARM64 Steam bootstrap: ${package_count} package files, ${zipvz_count} compressed payloads, updater rc ${steam_rc}, .installed present"
