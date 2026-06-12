@@ -41,8 +41,6 @@ Includes:
 | AYANEO Pocket DMG | SM8550 | ⚠️ Untested try at own risk |
 | AYANEO Pocket DS | SM8550 | ⚠️ Untested try at own risk |
 | AYANEO Pocket S 2K | SM8550 | ⚠️ Untested try at own risk |
-| AYANEO Pocket S2 | SM8650 | ⚠️ Untested try at own risk |
-| KONKR Pocket FIT | SM8650 | ⚠️ Untested try at own risk |
 
 ## Install
 
