@@ -50,8 +50,9 @@ testing has been completed.
 | Device | SoC | Status |
 |---|---|---|
 | AYN Odin 3 | SM8750 | ⚠️ Untested install at own risk |
+| KONKR Pocket FIT (8 Elite) | SM8750 | ⚠️ Untested install at own risk |
+| KONKR Pocket FIT (G3 Gen 3) | SM8650 | ⚠️ Untested install at own risk |
 | AYANEO Pocket S2 | SM8650 | ⚠️ Untested install at own risk |
-| KONKR Pocket FIT | SM8650 | ⚠️ Untested install at own risk |
 
 ## Install
 
