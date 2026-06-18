@@ -23,6 +23,9 @@ install -d -m 0755 "${homebrew}/services"
 install -d -m 0755 "${homebrew}/plugins"
 install -d -m 0755 "${homebrew}/settings"
 
+# Disable any pre-existing Decky plugin_loader.service so it doesn't conflict with ours.
+systemctl disable --now plugin_loader.service >/dev/null 2>&1 || true
+
 # Decky owns self-updates; the image copy seeds installs and newer OS-bundled loaders.
 if loader_needs_seed && [[ -x "${loader_src}" ]]; then
     install -Dpm 0755 "${loader_src}" "${homebrew}/services/PluginLoader"

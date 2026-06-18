@@ -21,7 +21,6 @@ systemctl disable getty@tty1.service || true
 systemctl enable sddm.service
 systemctl enable seatd.service
 systemctl enable inputplumber.service
-systemctl enable armada-upgrade-migrations.service
 systemctl enable armada-device-quirks.service
 systemctl enable armada-steamapps.service
 systemctl enable armada-powerd.service
