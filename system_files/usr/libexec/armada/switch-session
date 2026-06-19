@@ -3,7 +3,7 @@
 set -euo pipefail
 
 case "${1:-}" in
-    desktop)  session=plasma.desktop ;;
+    desktop)  session=armada-plasma.desktop ;;
     gamemode) session=gamescope-session-steam.desktop ;;
     *) echo "usage: $0 {desktop|gamemode}" >&2; exit 1 ;;
 esac

@@ -31,6 +31,9 @@ dnf5 -y install --setopt=install_weak_deps=False \
     lsof \
     unzip \
     evtest \
+    dbus-x11 \
+    xdg-user-dirs \
+    xdg-terminal-exec \
     btrfs-progs \
     parted \
     gdisk \
