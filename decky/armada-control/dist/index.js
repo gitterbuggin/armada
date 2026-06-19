@@ -9,6 +9,8 @@ const {
   SliderField,
   Tabs,
   ToggleField,
+  ModalRoot,
+  showModal,
   Router,
 } = DFL;
 
@@ -476,7 +478,252 @@ function Settings({ config, setConfig, setMessage }) {
       value: !!config.sshEnabled,
       onChange: setSshEnabled,
     }),
+    e(PanelSection, null,
+      e(ButtonItem, { layout: "below", onClick: openCalibration }, "Controller Calibration"),
+    ),
   );
+}
+
+function controlValue(state, name) {
+  return Number(state?.controls?.[name]?.value || 0);
+}
+
+function controlRange(state, name) {
+  const control = state?.controls?.[name] || {};
+  const min = Number(control.min);
+  const max = Number(control.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return { min: -32768, max: 32767 };
+  return { min, max };
+}
+
+function normalizedValue(state, name) {
+  const { min, max } = controlRange(state, name);
+  const value = controlValue(state, name);
+  const side = value < 0 ? Math.abs(min) : max;
+  if (!side) return 0;
+  return Math.max(-1, Math.min(1, value / side));
+}
+
+function triggerPercent(state, name) {
+  const { min, max } = controlRange(state, name);
+  const value = controlValue(state, name);
+  if (max === min) return 0;
+  return Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+}
+
+function StickPlot({ title, xName, yName, state }) {
+  const x = normalizedValue(state, xName);
+  const y = normalizedValue(state, yName);
+  return e("div", { className: "armada-cal-stick", style: { minWidth: 0 } },
+    e("div", { className: "armada-cal-label", style: { marginBottom: "10px", fontSize: "15px", fontWeight: 600, opacity: 0.9 } }, title),
+    e("div", {
+      className: "armada-cal-stick-box",
+      style: {
+        position: "relative",
+        width: "132px",
+        height: "132px",
+        border: "2px solid rgba(255,255,255,0.34)",
+        background: "rgba(255,255,255,0.055)",
+        boxSizing: "border-box",
+      },
+    },
+      e("div", { className: "armada-cal-axis armada-cal-axis-x", style: { position: "absolute", left: "8%", right: "8%", top: "50%", height: "1px", background: "rgba(255,255,255,0.22)" } }),
+      e("div", { className: "armada-cal-axis armada-cal-axis-y", style: { position: "absolute", top: "8%", bottom: "8%", left: "50%", width: "1px", background: "rgba(255,255,255,0.22)" } }),
+      e("div", {
+        className: "armada-cal-dot",
+        style: {
+          position: "absolute",
+          width: "18px",
+          height: "18px",
+          margin: "-9px 0 0 -9px",
+          border: "2px solid #fff",
+          borderRadius: "50%",
+          background: "#2677d8",
+          left: `${50 + x * 44}%`,
+          top: `${50 + y * 44}%`,
+        },
+      }),
+    ),
+  );
+}
+
+function TriggerBar({ title, name, state }) {
+  return e("div", { className: "armada-cal-trigger" },
+    e("div", { className: "armada-cal-label", style: { marginBottom: "10px", fontSize: "15px", fontWeight: 600, opacity: 0.9 } }, title),
+    e("div", {
+      className: "armada-cal-trigger-box",
+      style: {
+        width: "100%",
+        height: "28px",
+        minHeight: "28px",
+        border: "1px solid rgba(255,255,255,0.34)",
+        background: "rgba(255,255,255,0.055)",
+        boxSizing: "border-box",
+      },
+    },
+      e("div", { className: "armada-cal-trigger-fill", style: { width: `${triggerPercent(state, name)}%`, height: "100%", background: "#2677d8" } }),
+    ),
+  );
+}
+
+function makeCapture(state) {
+  const capture = {};
+  for (const name of ["left_x", "left_y", "right_x", "right_y", "left_trigger", "right_trigger"]) {
+    const value = controlValue(state, name);
+    const range = controlRange(state, name);
+    capture[name] = {
+      center: value,
+      min: value,
+      max: value,
+      range: range.max - range.min,
+    };
+  }
+  return capture;
+}
+
+function updateCapture(capture, state) {
+  const next = clone(capture || makeCapture(state));
+  for (const name of Object.keys(next)) {
+    const value = controlValue(state, name);
+    next[name].min = Math.min(next[name].min, value);
+    next[name].max = Math.max(next[name].max, value);
+  }
+  return next;
+}
+
+function CalibrationOverlay({ onClose, modal = false }) {
+  const [state, setState] = React.useState(null);
+  const [capture, setCapture] = React.useState(null);
+  const sessionToken = React.useRef(`${Date.now()}-${Math.random()}`);
+  const close = React.useCallback(() => {
+    backend.call("end_calibration_session", sessionToken.current).catch(() => {});
+    onClose();
+  }, [onClose]);
+  const loadState = React.useCallback(async () => {
+    try {
+      const next = await backend.call("get_controller_state");
+      setState(next);
+    } catch (error) {
+      setState({ supported: false, reason: String(error), controls: {} });
+    }
+  }, []);
+  React.useEffect(() => {
+    let cancelled = false;
+    let inflight = false;
+    const tick = async () => {
+      if (cancelled || inflight) return;
+      inflight = true;
+      try {
+        const next = await backend.call("get_controller_state");
+        if (cancelled) return;
+        setState(next);
+        setCapture((current) => next.supported ? updateCapture(current || makeCapture(next), next) : null);
+      } catch (error) {
+        if (!cancelled) setState({ supported: false, reason: String(error), controls: {} });
+      } finally {
+        inflight = false;
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 50);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loadState]);
+  React.useEffect(() => {
+    const token = sessionToken.current;
+    backend.call("begin_calibration_session", token).catch(() => {});
+    return () => {
+      backend.call("end_calibration_session", token).catch(() => {});
+    };
+  }, []);
+  const recenter = () => {
+    if (!state?.supported) return;
+    setCapture(makeCapture(state));
+  };
+  const save = async () => {
+    if (!capture) return;
+    try {
+      const latest = await backend.call("get_controller_state");
+      const finalCapture = latest.supported ? updateCapture(capture, latest) : capture;
+      const next = await backend.call("save_calibration", finalCapture);
+      setState(next);
+      setCapture(next.supported ? makeCapture(next) : null);
+    } catch (error) {
+      setState((current) => ({ ...(current || {}), supported: false, reason: String(error) }));
+    }
+  };
+  const reset = async () => {
+    try {
+      const next = await backend.call("reset_calibration");
+      setState(next);
+      setCapture(next.supported ? makeCapture(next) : null);
+    } catch (error) {
+      setState((current) => ({ ...(current || {}), supported: false, reason: String(error) }));
+    }
+  };
+  const canApply = !!state?.canApply;
+  return e("div", {
+    className: modal ? "armada-cal-overlay armada-cal-modal" : "armada-cal-overlay",
+  },
+    e("div", { className: "armada-cal-body", style: modal ? { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "12px" } : undefined },
+      e("div", { className: "armada-cal-plots", style: modal ? { display: "grid", gridTemplateColumns: "repeat(2, 132px)", gap: "22px", justifyContent: "center", alignItems: "start", width: "100%" } : undefined },
+        e(StickPlot, { title: "Left Stick", xName: "left_x", yName: "left_y", state }),
+        e(StickPlot, { title: "Right Stick", xName: "right_x", yName: "right_y", state }),
+      ),
+      e("div", { className: "armada-cal-triggers", style: modal ? { display: "grid", gridTemplateColumns: "repeat(2, 132px)", gap: "22px", justifyContent: "center", width: "100%" } : undefined },
+        e(TriggerBar, { title: "LT", name: "left_trigger", state }),
+        e(TriggerBar, { title: "RT", name: "right_trigger", state }),
+      ),
+      e("div", { className: "armada-cal-instructions", style: modal ? { maxWidth: "520px", width: "100%", margin: "0 auto", fontSize: "13px", lineHeight: "18px", opacity: 0.72 } : undefined },
+        e("div", null, "Move both sticks around their full edge several times, then fully press and release both triggers."),
+      ),
+    ),
+    e("div", { className: "armada-cal-footer", style: modal ? { display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" } : undefined },
+      !canApply ? e("div", { className: "armada-cal-actions", style: modal ? { display: "grid", gridTemplateColumns: "132px 1fr 132px", alignItems: "center", width: "100%", minHeight: "42px" } : undefined },
+        e("div", null),
+        e("div", {
+          className: "armada-cal-unsupported",
+          style: modal ? {
+            minHeight: "42px",
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#ffd166",
+            fontSize: "15px",
+            fontWeight: 600,
+            textAlign: "center",
+          } : undefined,
+        }, "Calibration not supported on this device"),
+        e("button", { className: "armada-cal-button", tabIndex: -1, onClick: close, style: modal ? { width: "132px" } : undefined }, "Close"),
+      ) : e("div", { className: "armada-cal-actions", style: modal ? { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px" } : undefined },
+        e("button", { className: "armada-cal-button", tabIndex: -1, onClick: recenter, disabled: !state?.supported }, "Restart Calibration"),
+        e("button", { className: "armada-cal-button", tabIndex: -1, onClick: reset, disabled: !canApply }, "Reset Calibration"),
+        e("button", { className: "armada-cal-button armada-cal-primary", tabIndex: -1, onClick: save, disabled: !canApply || !capture }, "Save Calibration"),
+        e("button", { className: "armada-cal-button", tabIndex: -1, onClick: close }, "Close"),
+      ),
+    ),
+  );
+}
+
+function showCalibrationModal() {
+  if (!showModal || !ModalRoot) return false;
+  const CalibrationModal = ({ closeModal }) => {
+    const close = () => {
+      closeModal();
+    };
+    return e(ModalRoot, { onCancel: close },
+      e(CalibrationOverlay, { modal: true, onClose: close }),
+    );
+  };
+  showModal(e(CalibrationModal));
+  return true;
+}
+
+function openCalibration() {
+  showCalibrationModal();
 }
 
 function Content() {
@@ -567,7 +814,8 @@ function Content() {
     e(StatusRow, { message }),
     content,
   );
-  return e("div", { className: "armada-control-tabs" },
+  return e(React.Fragment, null,
+  e("div", { className: "armada-control-tabs" },
     e("style", null, `
       .armada-control-tabs {
         height: 95%;
@@ -626,6 +874,174 @@ function Content() {
         justify-content: flex-start;
         align-self: stretch;
       }
+      .armada-cal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+        padding: 36px 48px;
+        background: #0b1118;
+        color: #fff;
+      }
+      .armada-cal-modal {
+        position: relative;
+        inset: auto;
+        z-index: auto;
+        width: min(620px, 70vw);
+        height: min(470px, 72vh);
+        padding: 20px 26px;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+      }
+      .armada-cal-modal .armada-cal-title {
+        font-size: 24px;
+        line-height: 30px;
+      }
+      .armada-cal-modal .armada-cal-body {
+        gap: 22px;
+      }
+      .armada-cal-modal .armada-cal-plots {
+        max-width: 600px;
+        gap: 24px;
+      }
+      .armada-cal-modal .armada-cal-triggers,
+      .armada-cal-modal .armada-cal-instructions {
+        max-width: 680px;
+      }
+      .armada-cal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .armada-cal-title {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 34px;
+      }
+      .armada-cal-subtitle, .armada-cal-instructions {
+        font-size: 14px;
+        line-height: 20px;
+        opacity: 0.72;
+      }
+      .armada-cal-close, .armada-cal-button {
+        min-width: 112px;
+        min-height: 42px;
+        padding: 0 18px;
+        border: 1px solid rgba(255,255,255,0.22);
+        background: rgba(255,255,255,0.08);
+        color: #fff;
+        font-size: 15px;
+      }
+      .armada-cal-button:disabled {
+        opacity: 0.35;
+      }
+      .armada-cal-unsupported {
+        min-height: 42px;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffd166;
+        font-size: 15px;
+        font-weight: 600;
+        text-align: center;
+        box-sizing: border-box;
+      }
+      .armada-cal-primary {
+        background: #2677d8;
+      }
+      .armada-cal-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 28px;
+      }
+      .armada-cal-plots {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 32px;
+        max-width: 760px;
+        width: 100%;
+        margin: 0 auto;
+      }
+      .armada-cal-stick {
+        min-width: 0;
+      }
+      .armada-cal-label {
+        margin-bottom: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        opacity: 0.9;
+      }
+      .armada-cal-stick-box {
+        position: relative;
+        width: 100%;
+        height: 240px;
+        border: 2px solid rgba(255,255,255,0.28);
+        background: rgba(255,255,255,0.035);
+      }
+      .armada-cal-modal .armada-cal-stick-box {
+        height: 220px;
+      }
+      .armada-cal-axis {
+        position: absolute;
+        background: rgba(255,255,255,0.18);
+      }
+      .armada-cal-axis-x {
+        left: 8%;
+        right: 8%;
+        top: 50%;
+        height: 1px;
+      }
+      .armada-cal-axis-y {
+        top: 8%;
+        bottom: 8%;
+        left: 50%;
+        width: 1px;
+      }
+      .armada-cal-dot {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: #2677d8;
+      }
+      .armada-cal-triggers {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+        gap: 32px;
+        max-width: 760px;
+        width: 100%;
+        margin: 0 auto;
+      }
+      .armada-cal-trigger-box {
+        width: 100%;
+        height: 28px;
+        min-height: 28px;
+        border: 1px solid rgba(255,255,255,0.28);
+        background: rgba(255,255,255,0.035);
+      }
+      .armada-cal-trigger-fill {
+        height: 100%;
+        background: #2677d8;
+      }
+      .armada-cal-instructions {
+        max-width: 760px;
+        width: 100%;
+        margin: 0 auto;
+      }
+      .armada-cal-footer {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
     `),
     e(Tabs, {
       activeTab: tab,
@@ -636,6 +1052,7 @@ function Content() {
         { id: "Advanced", title: tabIcons.Advanced, content: tabContent(e(Settings, { config, setConfig, setMessage })) },
       ],
     }),
+  ),
   );
 }
 

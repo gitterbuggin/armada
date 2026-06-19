@@ -20,6 +20,7 @@ find /etc/NetworkManager/system-connections -name '*.nmconnection' -exec chmod 0
 systemctl disable getty@tty1.service || true
 systemctl enable sddm.service
 systemctl enable seatd.service
+systemctl enable armada-input-calibration.service
 systemctl enable inputplumber.service
 systemctl enable armada-device-quirks.service
 systemctl enable armada-installer-visibility.service

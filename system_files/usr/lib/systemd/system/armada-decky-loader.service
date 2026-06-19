@@ -12,6 +12,7 @@ KillMode=mixed
 TimeoutStopSec=15
 WorkingDirectory=/var/home/armada/homebrew/services
 ExecStart=/var/home/armada/homebrew/services/PluginLoader
+ExecStopPost=-/usr/libexec/armada/inputplumber-intercept reset
 Environment=UNPRIVILEGED_PATH=/var/home/armada/homebrew
 Environment=PRIVILEGED_PATH=/var/home/armada/homebrew
 Environment=PLUGIN_PATH=/var/home/armada/homebrew/plugins
