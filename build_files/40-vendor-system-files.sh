@@ -18,6 +18,7 @@ sed -i '$r /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/arma
 find /etc/NetworkManager/system-connections -name '*.nmconnection' -exec chmod 0600 {} + -exec chown root:root {} + 2>/dev/null || true
 
 systemctl disable getty@tty1.service || true
+systemctl disable sshd.service || true
 systemctl enable sddm.service
 systemctl enable seatd.service
 systemctl enable armada-input-calibration.service
