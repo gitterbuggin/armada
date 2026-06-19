@@ -15,6 +15,7 @@ steam_root="${STEAM_ROOT:-${HOME}/.local/share/Steam}"
 steam_arm_dir="${steam_root}/steamrtarm64"
 steam_arm="${steam_arm_dir}/steam"
 steam_shim_dir="${steam_root}/lib/aarch64-linux-gnu"
+steam_runtime_bin="${steam_root}/steam-runtime-steamrt-arm64/bin"
 
 if [[ ! -x "${steam_arm}" ]]; then
     echo "ERROR: native ARM Steam is missing or not executable: ${steam_arm}" >&2
@@ -26,6 +27,9 @@ if [[ -d "${steam_shim_dir}" ]]; then
     steam_ld_path="${steam_ld_path}:${steam_shim_dir}"
 fi
 export LD_LIBRARY_PATH="${steam_ld_path}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+if [[ -d "${steam_runtime_bin}" ]]; then
+    export PATH="${steam_runtime_bin}:${PATH}"
+fi
 
 touch "${steam_root}/.cef-enable-remote-debugging"
 cd "${steam_arm_dir}"

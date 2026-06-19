@@ -3,6 +3,23 @@ set -euo pipefail
 
 [[ ${XDG_SESSION_TYPE:-} == wayland ]] || exit 0
 
+activation_env=(
+    DESKTOP_SESSION
+    XDG_CURRENT_DESKTOP
+    XDG_SESSION_DESKTOP
+    XDG_SESSION_TYPE
+    WAYLAND_DISPLAY
+    DISPLAY
+    XAUTHORITY
+    KDE_FULL_SESSION
+    KDE_SESSION_VERSION
+)
+if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+    dbus-update-activation-environment --systemd "${activation_env[@]}" 2>/dev/null || true
+else
+    systemctl --user import-environment "${activation_env[@]}" 2>/dev/null || true
+fi
+
 config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/armada"
 scale_done="${config_dir}/desktop-scale.done"
 

@@ -3,9 +3,10 @@
 set -euo pipefail
 
 case "${1:-}" in
-    desktop)  session=armada-plasma.desktop ;;
-    gamemode) session=gamescope-session-steam.desktop ;;
-    *) echo "usage: $0 {desktop|gamemode}" >&2; exit 1 ;;
+    switch-desktop)  session=armada-plasma.desktop; oneshot_desktop=1 ;;
+    switch-gamemode) session=gamescope-session-steam.desktop; oneshot_desktop=0 ;;
+    default-gamemode) session=gamescope-session-steam.desktop; oneshot_desktop=0; default_only=1 ;;
+    *) echo "usage: $0 {switch-desktop|switch-gamemode|default-gamemode}" >&2; exit 1 ;;
 esac
 
 logout_plasma() {
@@ -37,7 +38,15 @@ logout_plasma() {
 printf '[Autologin]\nSession=%s\n' "${session}" > /etc/sddm.conf.d/zz-steamos-autologin.conf
 systemctl reset-failed sddm.service 2>/dev/null || true
 
-if [[ ${1:-} == "gamemode" ]] && logout_plasma; then
+if [[ "${default_only:-0}" == "1" ]]; then
+    exit 0
+fi
+
+if [[ "${oneshot_desktop}" == "1" ]]; then
+    touch /run/armada-desktop-oneshot
+fi
+
+if [[ ${1:-} == "switch-gamemode" ]] && logout_plasma; then
     exit 0
 fi
 

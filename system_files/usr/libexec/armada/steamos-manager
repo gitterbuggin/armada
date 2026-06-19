@@ -144,7 +144,8 @@ class ArmadaSteamOSManager:
         self.device_id = self.env.get("ARMADA_DEVICE_ID", "armada")
         self.device_name = self.env.get("ARMADA_DEVICE_NAME", "Armada")
         self.default_login_mode = self.env.get("ARMADA_STEAM_DEFAULT_LOGIN_MODE", "game")
-        self.default_desktop_session = self.env.get("ARMADA_STEAM_DESKTOP_SESSION", "")
+        self.default_desktop_session = self.env.get("ARMADA_STEAM_DESKTOP_SESSION", "armada-plasma.desktop")
+        self.valid_desktop_sessions = ("armada-plasma.desktop",)
         self.power = PowerClient()
         self.connection = None
 
@@ -230,7 +231,10 @@ class ArmadaSteamOSManager:
             self.emit_properties(iface, {prop: applied})
             return
         if iface == IFACE_SESSION and prop == "DefaultDesktopSession":
-            self.default_desktop_session = value.get_string()
+            session = value.get_string()
+            if session not in self.valid_desktop_sessions:
+                raise ValueError(session)
+            self.default_desktop_session = session
             self.emit_properties(iface, {prop: value})
             return
         if iface == IFACE_SESSION and prop == "DefaultLoginMode":
@@ -241,6 +245,25 @@ class ArmadaSteamOSManager:
             self.emit_properties(iface, {prop: value})
             return
         raise KeyError(prop)
+
+    def switch_session(self, target):
+        commands = {
+            "desktop": "switch-desktop",
+            "gamemode": "switch-gamemode",
+        }
+        command = ["/usr/libexec/armada/session-control", commands[target]]
+        if os.geteuid() != 0:
+            command = ["sudo", "-n", *command]
+        subprocess.run(command, check=True, timeout=10)
+
+    def switch_login_mode(self, mode):
+        if mode == "desktop":
+            self.switch_session("desktop")
+            return
+        if mode in ("", "game", "gamemode", "steam"):
+            self.switch_session("gamemode")
+            return
+        raise ValueError(mode)
 
     def handle_root_method_call(self, _conn, _sender, _path, iface, method, _params, invocation):
         if iface == IFACE_OBJECT_MANAGER and method == "GetManagedObjects":
@@ -255,17 +278,47 @@ class ArmadaSteamOSManager:
             return
         if iface == IFACE_SESSION:
             if method == "ValidDesktopSessions":
-                sessions = [self.default_desktop_session] if self.default_desktop_session else []
-                invocation.return_value(GLib.Variant("(as)", (sessions,)))
+                invocation.return_value(GLib.Variant("(as)", (list(self.valid_desktop_sessions),)))
                 return
-            # Steam probes these on SteamOS; Armada is game-mode only, so they are compatibility no-ops.
-            if method in (
-                "SwitchToDesktopMode",
-                "SwitchToGameMode",
-                "SwitchToLoginMode",
-                "SwitchToDesktopSession",
-                "CleanTemporarySessions",
-            ):
+            if method == "SwitchToDesktopMode":
+                try:
+                    self.switch_session("desktop")
+                except Exception as exc:
+                    invocation.return_dbus_error(f"{BUS_NAME}.Error.SwitchFailed", str(exc))
+                    return
+                invocation.return_value(None)
+                return
+            if method == "SwitchToDesktopSession":
+                try:
+                    values = _params.unpack()
+                    if values and values[0] not in self.valid_desktop_sessions:
+                        raise ValueError(values[0])
+                    self.switch_session("desktop")
+                except Exception as exc:
+                    invocation.return_dbus_error(f"{BUS_NAME}.Error.SwitchFailed", str(exc))
+                    return
+                invocation.return_value(None)
+                return
+            if method == "SwitchToGameMode":
+                try:
+                    self.switch_session("gamemode")
+                except Exception as exc:
+                    invocation.return_dbus_error(f"{BUS_NAME}.Error.SwitchFailed", str(exc))
+                    return
+                invocation.return_value(None)
+                return
+            if method == "SwitchToLoginMode":
+                try:
+                    values = _params.unpack()
+                    mode = values[0] if values else self.default_login_mode
+                    self.switch_login_mode(mode)
+                except Exception as exc:
+                    invocation.return_dbus_error(f"{BUS_NAME}.Error.SwitchFailed", str(exc))
+                    return
+                invocation.return_value(None)
+                return
+            # Steam probes this on SteamOS; Armada does not create temporary sessions.
+            if method == "CleanTemporarySessions":
                 invocation.return_value(None)
                 return
         invocation.return_dbus_error(f"{BUS_NAME}.Error.UnknownMethod", method)
