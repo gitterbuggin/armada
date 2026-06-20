@@ -1,9 +1,7 @@
-import subprocess
 from pathlib import Path
 
 STEAM_ROOT = Path("/var/home/armada/.local/share/Steam")
 STEAM_APPS_DIR = STEAM_ROOT / "steamapps"
-STEAM_SETTINGS = "/usr/libexec/armada/steam-settings"
 
 
 def installed_games():
@@ -36,18 +34,3 @@ def installed_games():
                 games.append({"appid": str(appid), "name": name})
                 seen.add(appid)
     return sorted(games, key=lambda game: game["name"].casefold())
-
-
-def _steam_settings(*args):
-    return subprocess.check_output((STEAM_SETTINGS, *args), text=True, timeout=6).strip()
-
-
-def global_resolution():
-    try:
-        return _steam_settings("get-global-resolution") or "Default"
-    except (OSError, subprocess.SubprocessError):
-        return "Default"
-
-
-def set_global_resolution(value):
-    return _steam_settings("set-global-resolution", value) or "Default"

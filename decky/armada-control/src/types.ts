@@ -75,7 +75,6 @@ export interface Config {
   powerDefaults: PowerConfig;
   tweaks: Tweaks;
   installedGames: InstalledGame[];
-  steamGlobalResolution: string;
   fexProfiles: Record<string, FexProfile>;
   cpuDeviceClass: string;
   sshEnabled: boolean;

@@ -1,8 +1,8 @@
 import { Field, PanelSection, ToggleField } from "@decky/ui";
 import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { setGlobalResolution } from "../backend";
 import { SelectEdit } from "../components/widgets";
+import { getGlobalResolution, setGlobalResolution } from "../lib/steamSettings";
 import { clone } from "../lib/util";
 import { availableGames, editTargetOptions } from "../lib/games";
 import type { Config } from "../types";
@@ -32,7 +32,7 @@ const thunkModules = [
 
 export function Compatibility({ config, setConfig }: { config: Config; setConfig: Dispatch<SetStateAction<Config | null>> }) {
   const [resolution, setResolution] = useState("Default");
-  const [defaultResolution, setDefaultResolution] = useState(config.steamGlobalResolution || "Default");
+  const [defaultResolution, setDefaultResolution] = useState(getGlobalResolution());
   const [resolutionMessage, setResolutionMessage] = useState("");
   const [customSelected, setCustomSelected] = useState(false);
   const runtimeGame = config.game;
@@ -68,8 +68,8 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
     setCustomSelected(false);
   }, [game?.appid]);
   useEffect(() => {
-    setDefaultResolution(config.steamGlobalResolution || "Default");
-  }, [config.steamGlobalResolution]);
+    setDefaultResolution(getGlobalResolution());
+  }, []);
   const gameSettings = game?.appid ? tweaks.games[game.appid] || {} : {};
   const editingDefault = !game?.appid;
   const perGameEnabled = !!(game?.appid && gameSettings.enabled === true);
@@ -124,7 +124,7 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
     try {
       const applied = await setGlobalResolution(value);
       setResolutionMessage("");
-      setConfig((current) => (current ? { ...current, steamGlobalResolution: applied || "Default" } : current));
+      setDefaultResolution(applied || "Default");
     } catch (error) {
       setResolutionMessage("Failed to set default resolution");
     }

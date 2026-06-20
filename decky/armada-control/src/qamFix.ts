@@ -79,6 +79,22 @@ export function installQamProfileFix(profileIds: string[]) {
   executeInTab("Steam Big Picture Mode", false, qamScript).catch(() => {});
 }
 
+export function startQamProfileFix(loadProfileIds: () => Promise<string[]>) {
+  let timer: number | undefined;
+  const install = async () => {
+    try {
+      const profileIds = await loadProfileIds();
+      if (profileIds.length) installQamProfileFix(profileIds);
+    } catch (error) {
+    }
+  };
+  install();
+  timer = window.setInterval(install, 10000);
+  return () => {
+    if (timer !== undefined) window.clearInterval(timer);
+  };
+}
+
 export function cleanupQamFix() {
   const script = `
     window.__armadaQamProfileFixObserver?.disconnect?.();

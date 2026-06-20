@@ -1,5 +1,5 @@
 from .power import factory_power_defaults, parse_power
-from .steam import global_resolution, installed_games
+from .steam import installed_games
 from .system import cpu_device_class, ssh_enabled
 from .tweaks import fex_profile_labels, load_fex_contract, load_tweaks
 
@@ -11,7 +11,6 @@ def build_config():
         "powerDefaults": factory_power_defaults(),
         "tweaks": load_tweaks(),
         "installedGames": installed_games(),
-        "steamGlobalResolution": global_resolution(),
         "fexProfiles": fex_profile_labels(fex_contract),
         "cpuDeviceClass": cpu_device_class(),
         "sshEnabled": ssh_enabled(),

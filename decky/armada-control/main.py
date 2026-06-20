@@ -9,7 +9,6 @@ from armada_control.calibration import (
 )
 from armada_control.config import build_config
 from armada_control.power import save_power_config
-from armada_control.steam import set_global_resolution
 from armada_control.system import set_ssh_enabled
 from armada_control.tweaks import save_tweaks
 
@@ -29,9 +28,6 @@ class Plugin:
 
     async def set_ssh_enabled(self, enabled):
         return await asyncio.to_thread(set_ssh_enabled, enabled)
-
-    async def set_global_resolution(self, value):
-        return await asyncio.to_thread(set_global_resolution, value)
 
     async def get_controller_state(self):
         return await asyncio.to_thread(controller_state)
