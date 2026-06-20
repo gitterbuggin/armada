@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euxo pipefail
 
-install -d -m 0755 /usr/share/decky-plugins/ArmadaControl
+install -d -m 0755 /usr/share/decky-plugins/armada-control
 # Copy dist from the image build stage, not the source tree.
 src=/ctx/decky/armada-control
-cp -a "${src}/plugin.json" "${src}/package.json" "${src}/main.py" /usr/share/decky-plugins/ArmadaControl/
-cp -a "${src}/py_modules" /usr/share/decky-plugins/ArmadaControl/
-cp -a /packages/decky-dist /usr/share/decky-plugins/ArmadaControl/dist
-rm -f /usr/share/decky-plugins/ArmadaControl/dist/*.map
-find /usr/share/decky-plugins/ArmadaControl -name __pycache__ -type d -prune -exec rm -rf {} +
+cp -a "${src}/plugin.json" "${src}/package.json" "${src}/main.py" /usr/share/decky-plugins/armada-control/
+cp -a "${src}/py_modules" /usr/share/decky-plugins/armada-control/
+cp -a /packages/decky-dist /usr/share/decky-plugins/armada-control/dist
+rm -f /usr/share/decky-plugins/armada-control/dist/*.map
+find /usr/share/decky-plugins/armada-control -name __pycache__ -type d -prune -exec rm -rf {} +
 chmod 0755 /usr/lib/decky-loader/armada-decky-sync
 
 decky_release="$(
