@@ -69,6 +69,7 @@ cat > /usr/share/fex-emu/Config.json <<'EOF'
   "ThunksDB": {
     "Vulkan": 1,
     "GL": 1,
+    "EGL": 1,
     "drm": 1,
     "WaylandClient": 1,
     "asound": 1
@@ -76,7 +77,7 @@ cat > /usr/share/fex-emu/Config.json <<'EOF'
 }
 EOF
 
-# Bypass Terra's i686-only steam dependency; we launch native ARM Steam.
+# Bypass Terra's i686-only steam dependency; armada launches native ARM Steam.
 mkdir -p /tmp/gss-rpm
 dnf5 download --enable-repo=terra --destdir=/tmp/gss-rpm gamescope-session-steam
 rpm -ivh --nodeps /tmp/gss-rpm/gamescope-session-steam-*.rpm
@@ -88,7 +89,7 @@ STEAM_HOME="${STEAM_BOOTSTRAP_HOME}/.local/share/Steam"
 STEAM_BOOTSTRAP_HOME="${STEAM_BOOTSTRAP_HOME}" bash /ctx/build_files/generate-steam-bootstrap.sh
 rm -f /etc/steamos-oobe-image
 
-PROTON_VER="11.0-20260601-slr"
+PROTON_VER="11.0-20260602-slr"
 PROTON_NAME="proton-cachyos-${PROTON_VER}-arm64"
 PROTON_TAR="${PROTON_NAME}.tar.xz"
 PROTON_URL="https://github.com/CachyOS/proton-cachyos/releases/download/cachyos-${PROTON_VER}/${PROTON_TAR}"

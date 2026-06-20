@@ -1,9 +1,14 @@
 {
   "defaults": {
     "global": {
-      "fexProfile": "default",
-      "hostThunks": true,
-      "dxBackend": "dxvk"
+      "thunks": {
+        "Vulkan": true,
+        "GL": true,
+        "EGL": true,
+        "drm": true,
+        "WaylandClient": true,
+        "asound": true
+      }
     },
     "games": {}
   },
