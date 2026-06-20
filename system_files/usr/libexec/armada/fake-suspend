@@ -1,8 +1,10 @@
 #!/bin/bash
-# Fake suspend for SM8550; real S3 hangs.
+# Real suspend hangs this SoC. Runs as systemd-suspend.service and blocks until
+# woken, so logind's sleep lifecycle (and Steam's blank) lasts the whole sleep.
 set -uo pipefail
 
 STATE_FLAG="/run/armada/fake-suspend.active"
+WAKE_FLAG="/run/armada/fake-suspend.wake"
 SAVE_DIR="/run/armada/fake-suspend"
 LOG_TAG="armada-fake-suspend"
 
@@ -29,7 +31,6 @@ as_session() {
         "$@"
 }
 
-# Non-DRM-master fallback.
 display_off() {
     if as_session gamescopectl drm_sleep_internal_screen 1; then
         log "display off (gamescope)"
@@ -50,33 +51,24 @@ display_on() {
 mute_audio()   { as_session wpctl set-mute @DEFAULT_AUDIO_SINK@ 1 2>/dev/null || true; }
 unmute_audio() { as_session wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null || true; }
 
-# Resume sometimes brings the backlight back dark; restore the pre-sleep level.
-save_brightness() {
-    local b n
-    for b in /sys/class/backlight/*/brightness; do
-        [[ -r "$b" ]] || continue
-        n="$(basename "$(dirname "$b")")"
-        cat "$b" > "$SAVE_DIR/brightness.$n" 2>/dev/null || true
-    done
-}
-restore_brightness() {
-    local f n b
-    for f in "$SAVE_DIR"/brightness.*; do
-        [[ -f "$f" ]] || continue
-        n="${f##*/brightness.}"
-        b="/sys/class/backlight/$n/brightness"
-        [[ -w "$b" ]] && cat "$f" > "$b" 2>/dev/null || true
-    done
-}
-
-# EBUSY on InputPlumber source nodes is fine.
+# The power key is left ungrabbed by block_input; wait_for_wake grabs it instead.
 INPUT_WHITELIST='pmic_pwrkey'
+
+power_device() {
+    local dev name
+    for dev in /dev/input/event*; do
+        [[ -e "$dev" ]] || continue
+        name="$(cat "/sys/class/input/$(basename "$dev")/device/name" 2>/dev/null)" || continue
+        case "$name" in *pwrkey*|*[Pp]ower\ [Bb]utton*) echo "$dev"; return 0 ;; esac
+    done
+    return 1
+}
 
 block_input() {
     local dev name
     for dev in /dev/input/event*; do
         [[ -e "$dev" ]] || continue
-        # Never grab the lid switch — resume-on-open needs its events to flow.
+        # Never grab the lid switch — logind/resume need its events to flow.
         armada_dev_has_lid "$dev" && continue
         name="$(cat "/sys/class/input/$(basename "$dev")/device/name" 2>/dev/null)" || continue
         echo "$name" | grep -qE "^(${INPUT_WHITELIST})$" && continue
@@ -84,6 +76,43 @@ block_input() {
     done
 }
 unblock_input() { pkill -9 -f 'evtest --grab' 2>/dev/null || true; }
+
+# Grab the power key and block until woken, so the wake press resumes us instead
+# of reaching logind/Steam.
+wait_for_wake() {
+    rm -f "$WAKE_FLAG"
+    local pdev t0 line lidwasclosed; pdev="$(power_device || true)"; t0=$SECONDS
+    # Clamshell: a closed lid blocks the power button (no waking in a bag); lid-open wakes.
+    lidwasclosed=0; armada_lid_closed 2>/dev/null && lidwasclosed=1
+    if [[ -n "$pdev" ]]; then
+        log "waiting for wake (power key ${pdev})"
+        while true; do
+            [[ -f "$WAKE_FLAG" ]] && { log "wake (flag)"; break; }
+            if armada_lid_closed 2>/dev/null; then
+                lidwasclosed=1
+            elif (( lidwasclosed )); then
+                log "wake (lid open)"; break
+            fi
+            if IFS= read -r -t 1 line; then
+                case "$line" in
+                    *"(KEY_POWER), value 1"*)
+                        if (( SECONDS - t0 >= 1 )) && ! armada_lid_closed 2>/dev/null; then log "wake (power key)"; break; fi ;;
+                esac
+            elif (( $? <= 128 )); then
+                sleep 1   # evtest ended (not a read timeout); avoid a busy loop
+            fi
+        done < <(evtest --grab "$pdev" 2>/dev/null)
+    else
+        log "no power device; waiting on wake flag"
+        while :; do
+            [[ -f "$WAKE_FLAG" ]] && break
+            if armada_lid_closed 2>/dev/null; then lidwasclosed=1
+            elif (( lidwasclosed )); then break; fi
+            sleep 0.5
+        done
+    fi
+    rm -f "$WAKE_FLAG"
+}
 
 # Values are the 15-char /proc comm.
 SESSION_KEEP_COMMS='gamescope-wl|gamescope-sessi|Xwayland|mangoapp|steam_notif_dae'
@@ -121,30 +150,37 @@ do_suspend() {
     log "entering fake suspend"
     mkdir -p "$SAVE_DIR"
     touch "$STATE_FLAG"
-    save_brightness
     mute_audio
     block_input
-    display_off
+    display_off   # gamescope drm_sleep (game) / bl_power (desktop); after Steam's animation
     freeze_processes
     timeout 10 /usr/bin/armada-power suspend || log "armada-power suspend timed out"
 }
 do_resume() {
+    # Idempotent: a trap-fired resume after the explicit one is a no-op.
+    [[ -f "$STATE_FLAG" ]] || return 0
     log "leaving fake suspend"
-    # Clear the flag last, so a hung display_on can't strand the device.
     unfreeze_processes
     unblock_input
     unmute_audio
     display_on
     timeout 10 /usr/bin/armada-power resume || log "armada-power resume timed out"
-    restore_brightness
     rm -f "$STATE_FLAG"
     rm -rf "$SAVE_DIR"
 }
 
-case "${1:-toggle}" in
-    toggle|power)  if [[ -f "$STATE_FLAG" ]]; then do_resume; else do_suspend; fi ;;
-    sleep|suspend) [[ -f "$STATE_FLAG" ]] || do_suspend ;;
-    wake|resume)   [[ -f "$STATE_FLAG" ]] && do_resume ;;
-    status)        [[ -f "$STATE_FLAG" ]] && echo "suspended" || echo "awake" ;;
-    *) echo "Usage: $0 {toggle|sleep|wake|status}" >&2; exit 2 ;;
+case "${1:-sleep}" in
+    sleep|suspend)
+        [[ -f "$STATE_FLAG" ]] && exit 0
+        # If killed (e.g. unit stopped / timeout), always resume so nothing is stranded.
+        trap 'do_resume; exit 0' INT TERM
+        do_suspend
+        wait_for_wake
+        do_resume
+        trap - INT TERM
+        ;;
+    wake|resume)  touch "$WAKE_FLAG" ;;
+    toggle|power) if [[ -f "$STATE_FLAG" ]]; then touch "$WAKE_FLAG"; else exec "$0" sleep; fi ;;
+    status)       [[ -f "$STATE_FLAG" ]] && echo "suspended" || echo "awake" ;;
+    *) echo "Usage: $0 {sleep|wake|toggle|status}" >&2; exit 2 ;;
 esac

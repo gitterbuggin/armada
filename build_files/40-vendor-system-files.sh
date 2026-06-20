@@ -27,7 +27,6 @@ systemctl enable armada-device-quirks.service
 systemctl enable armada-installer-visibility.service
 systemctl enable armada-steamapps.service
 systemctl enable armada-powerd.service
-systemctl enable armada-power-switch.service
 systemctl enable armada-steamos-manager.service
 systemctl --global enable armada-steamos-manager.service
 systemctl enable armada-bootimg-sync.service
@@ -38,6 +37,6 @@ systemctl enable armada-flatpak-setup.service
 # `systemctl unmask --now bootc-fetch-apply-updates.timer`.
 systemctl mask bootc-fetch-apply-updates.timer
 
-# Real S3 hangs on SM8550, and routing idle suspend through logind races the
-# gamescope freeze. Mask all sleep services; the power button drives fake-suspend.
-systemctl mask systemd-suspend.service systemd-hibernate.service systemd-hybrid-sleep.service systemd-suspend-then-hibernate.service
+# systemd-suspend.service is overridden (drop-in) to run fake-suspend; mask the
+# other sleep ops so nothing reaches real suspend (it hangs this SoC).
+systemctl mask systemd-hibernate.service systemd-hybrid-sleep.service systemd-suspend-then-hibernate.service
