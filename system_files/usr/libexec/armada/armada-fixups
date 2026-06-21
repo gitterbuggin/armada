@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+import os
+import pathlib
+import re
+import stat
+
+
+STEAM_CONFIGS = (
+    pathlib.Path("/var/home/armada/.local/share/Steam/config/config.vdf"),
+    pathlib.Path("/var/home/armada/.steam/root/config/config.vdf"),
+)
+
+PROTON_11_VERSIONED = re.compile(r"proton-cachyos-11\.0-[^\"\s]+-arm64")
+# Keep this in sync with PROTON_TOOL_NAME when changing Proton major/minor lines.
+PROTON_11_STABLE = "proton-cachyos-11.0-arm64"
+
+
+def rewrite_file(path, pattern, replacement):
+    try:
+        file_stat = path.stat()
+        text = path.read_text(encoding="utf-8", errors="surrogateescape")
+    except FileNotFoundError:
+        return False
+
+    new_text = pattern.sub(replacement, text)
+    if new_text == text:
+        return False
+
+    tmp_path = path.with_name(f".{path.name}.armada-fixup")
+    tmp_path.write_text(new_text, encoding="utf-8", errors="surrogateescape")
+    os.chown(tmp_path, file_stat.st_uid, file_stat.st_gid)
+    os.chmod(tmp_path, stat.S_IMODE(file_stat.st_mode))
+    os.replace(tmp_path, path)
+    return True
+
+
+def fix_proton_11_tool_id():
+    changed = False
+    seen = set()
+    for path in STEAM_CONFIGS:
+        try:
+            key = path.resolve(strict=True)
+        except FileNotFoundError:
+            key = path
+        if key in seen:
+            continue
+        seen.add(key)
+        changed = rewrite_file(path, PROTON_11_VERSIONED, PROTON_11_STABLE) or changed
+    if changed:
+        print(f"Rewrote CachyOS Proton 11 compatibility tool ID to {PROTON_11_STABLE}")
+
+
+def main():
+    fix_proton_11_tool_id()
+
+
+if __name__ == "__main__":
+    main()

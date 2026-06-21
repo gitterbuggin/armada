@@ -82,12 +82,28 @@ def set_default_compat(config_path, tool_name):
 
 def set_display_name(compatibilitytool_path):
     text = compatibilitytool_path.read_text()
-    text = re.sub(
+    text, count = re.subn(
         r'("display_name"\s+)"[^"]+"',
         r'\1"Proton 11.0 (CachyOS)"',
         text,
         count=1,
     )
+    if count != 1:
+        raise SystemExit("missing display_name entry")
+    compatibilitytool_path.write_text(text)
+
+
+def set_compat_tool_name(compatibilitytool_path, tool_name):
+    text = compatibilitytool_path.read_text()
+
+    text, count = re.subn(
+        r'("compat_tools"\s*\{\s*)"[^"]+"',
+        lambda match: f'{match.group(1)}"{tool_name}"',
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise SystemExit("missing compat_tools entry")
     compatibilitytool_path.write_text(text)
 
 
@@ -99,7 +115,9 @@ def main():
     tool_name = sys.argv[2]
     tool_dir = pathlib.Path(sys.argv[3]) / tool_name
 
-    set_display_name(tool_dir / "compatibilitytool.vdf")
+    compatibilitytool_path = tool_dir / "compatibilitytool.vdf"
+    set_compat_tool_name(compatibilitytool_path, tool_name)
+    set_display_name(compatibilitytool_path)
     set_default_compat(steam_home / "config" / "config.vdf", tool_name)
 
 
