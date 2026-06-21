@@ -5,7 +5,7 @@ DEFAULT_TYPE = "deck-uhid"
 CONTROLLER_TYPES = {
     "deck-uhid": "Steam Deck",
     "xb360": "Xbox 360",
-    "ds5": "DualSense 5",
+    "ds5": "DualSense",
 }
 
 
