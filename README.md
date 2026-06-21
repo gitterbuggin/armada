@@ -10,6 +10,9 @@ Includes:
 * Desktop mode (KDE)
 * Bazaar App Store
 * Over-the-air updates
+* Install to internal storage (alongside Android)
+* Power and fan control in the Steam UI
+* Per-game FEX and Proton settings (Decky plugin)
 
 > [!WARNING]
 > **Prototype software. Use at your own risk.** Armada is under active
@@ -21,11 +24,10 @@ Includes:
 > is still being validated. If an update fails, reflashing the SD card is the
 > reliable recovery.
 >
-> **SSH is enabled with a known default password.** To make debugging easier
-> in the prototype phase, the image ships with user `armada` / password `armada`
-> and SSH open. **Anyone on your network can log in.** Change the password
-> before using Armada on an untrusted network, or treat the device as
-> fully exposed.
+> **Armada ships with a known default password.** The image ships with user
+> `armada` / password `armada`. SSH is disabled by default, but if you enable it
+> from Armada Control, anyone on your network can log in until you change the
+> password.
 
 ## Supported devices
 
@@ -36,6 +38,7 @@ Includes:
 | AYN Odin 2 Mini | SM8550 | ✅ Tested |
 | AYN Odin 2 | SM8550 | ✅ Tested |
 | AYN Thor | SM8550 | ✅ Tested |
+| AYN Odin 3 | SM8750 | ✅ Tested |
 | Retroid Pocket 6 | SM8550 | ⚪ Untested |
 | AYANEO Pocket ACE | SM8550 | ⚪ Untested |
 | AYANEO Pocket DMG | SM8550 | ⚪ Untested |
@@ -44,20 +47,19 @@ Includes:
 
 The following devices are supported but their SoC has not been
 thoroughly tested on Armada. There is a higher chance of brick
-or Android data partition corruption on these devices until further 
+or Android data partition corruption on these devices until further
 testing has been completed.
- 
+
 | Device | SoC | Status |
 |---|---|---|
-| AYN Odin 3 | SM8750 | ⚠️ Untested install at own risk |
-| KONKR Pocket FIT (8 Elite) | SM8750 | ⚠️ Untested install at own risk |
 | KONKR Pocket FIT (G3 Gen 3) | SM8650 | ⚠️ Untested install at own risk |
 | AYANEO Pocket S2 | SM8650 | ⚠️ Untested install at own risk |
 
 ## Install
 
-Armada currently boots from SD card. Internal install support is still in
-development.
+Armada boots from SD card. Once it is running, you can optionally install it to
+internal storage so it boots without the card (see
+[Install to internal storage](#install-to-internal-storage)).
 
 1. Flash the Armada image to SD.
 
@@ -71,7 +73,7 @@ development.
    - Identify your SoC from the device table above (`SM8550`, `SM8650`, or
      `SM8750`). Flashing the wrong SoC's ABL can brick the device, so match it
      carefully.
-   - Using your device's built-in "run script as root" tool, browse to your SoC's 
+   - Using your device's built-in "run script as root" tool, browse to your SoC's
      subfolder (e.g. `rocknix_abl/SM8550`) and run `backup_abl.sh`.
    - Copy the backup (`abl_a.img` and `abl_b.img`, written into your SoC subfolder)
      to your PC for safekeeping.
@@ -89,9 +91,76 @@ development.
 
    After the intro animation, the display may be black for up to 60 seconds
    before Steam appears. This is expected on the current SD card boot path.
-   Eventually you will see Steam first-run where you can configure your 
-   language, timezone, and Wi-Fi. At the end Steam will restart again, and 
+   Eventually you will see Steam first-run where you can configure your
+   language, timezone, and Wi-Fi. At the end Steam will restart again, and
    you may see another 60 seconds of black before the login screen appears.
+
+## Install to internal storage
+
+Once Armada is running from the SD card, you can install it to the device's
+internal storage so it boots without the card. Open **Desktop Mode** and launch
+**Armada Installer** from the **System** menu.
+
+> [!WARNING]
+> Installing to internal storage repartitions internal storage and can require a
+> PC (`fastboot`) to recover from a failed install. In most cases your Android
+> partition will need to be resized, which will cause a **factory-reset**. 
+
+The installer checks what is already on internal storage and offers:
+
+- **Install alongside Android** (fresh device): choose how much storage Android
+  keeps; Armada takes the rest. This **factory-resets Android** (you lose Android
+  apps and data, but the Android system itself stays).
+- **Reinstall / Switch to Armada** (a ROCKNIX or Armada install is already
+  present): Armada replaces the existing Linux install and **leaves Android
+  untouched**, with no resize or wipe.
+- **Remove and restore Android**: erase the Armada/ROCKNIX install and give the
+  whole disk back to Android (Android factory-resets on its next boot).
+
+When it finishes, **power off, remove the SD card, then power on.** Internal
+storage boots before the SD card.
+
+If an install is interrupted, re-run Armada Installer from the SD card to finish.
+Only if the device will not boot the SD card at all, recover from a PC with
+`fastboot erase ROCKNIX`.
+
+## Using Armada
+
+FEX (x86 translation) and CachyOS Proton 11 are set up out of the box, so for most
+games you can just install from Steam and press play, with no extra setup. The
+rest of Armada works like SteamOS, and the Armada-specific controls live in
+**Armada Control**, a Decky plugin in the Quick Access Menu, for tuning and the
+occasional game that needs it.
+
+### Quick Access Menu and Armada Control
+
+Press the **Steam** button to open the Quick Access Menu (on AYANEO devices the
+QAM is unmapped, so use **Home + A**), then open **Armada Control**. It has three
+tabs:
+
+- **Power.** Pick a profile: **Eco**, **Balanced**, or **Performance**. Each sets
+  a fan curve, CPU underclock, and a GPU clock range. Profiles are editable in
+  **Armada Control**.
+- **Compatibility.** Per-game resolution and FEX settings. Pick a FEX preset
+  (**Default**, **Fast**, **Compatible**, or **Custom**). The defaults work for
+  most titles; change these only if a game misbehaves. Settings are saved per game.
+- **Settings.** Choose the controller emulation type (**Xbox 360**, **Steam
+  Deck**, or **DualSense**), launch stick and trigger **calibration**, and adjust
+  system options.
+
+### Desktop mode
+
+From the Steam power menu, choose **Switch to Desktop** for a full KDE Plasma
+desktop. The **Bazaar** app store and the **Armada Installer**
+([Install to internal storage](#install-to-internal-storage)) live here. Use the
+**Return to Gaming Mode** shortcut on the desktop to switch back.
+
+### Power button and sleep
+
+Pressing the power button does a "fake suspend" (inspired by ROCKNIX) rather than
+real S3 sleep: it blanks the screen and freezes the session, and the same press
+wakes it. Because the device does not truly sleep, idle battery drain is higher
+than it would be with real suspend.
 
 ## Updating
 
@@ -99,27 +168,20 @@ development.
 > Over-the-air updates are new and still being validated. You may need to reflash
 > if an update fails.
 
-Armada has several release channels (`Beta` only in currently) and can update 
-itself in place — no reflash, no re-downloading games. Trigger an update 
-from Steam's update prompt, or run `steamos-update` from a terminal. Updates are
-image-based with rollback, so a failed boot falls back to the previous image.
-
-## Roadmap
-
-- **Install to internal storage:** currently boots from SD card
-- **Power / fan control:** integrated with Steam UI where possible
-- **Game compatibility decky plugin:** per game FEX and Proton settings
+Armada supports several release channels (only `Beta` is currently in use) and can 
+update itself in place, with no reflash and no need to redownload games. Trigger an 
+update from Steam's system settings. Updates are image-based with rollback, so a 
+failed boot falls back to the previous image.
 
 ## Known issues
 
-- **No true suspend.** Pressing power does a "fake suspend" inspired by ROCKNIX,
-  not real S3 sleep, so idle battery drain is higher than it should be.
-- **Black screen during Steam launch.** Sometimes there is a 30-60s black screen 
+- **Black screen during Steam launch.** Sometimes there is a 30-60s black screen
   before Steam becomes fully visible, often following an update or restart.
-- **Red tint.** Some devices show a red tint on the panel after Steam 
+- **Red tint.** Some devices show a red tint on the panel after Steam
   restart. It is intermittent and a reboot clears it.
-- **Steam Machine onboarding.** Sometimes you see the Steam Machine onboarding
-  before choosing your language. Tap through it to continue.
+- **FEX presets apply only to Proton launches.** Armada Control's per-game FEX
+  preset changes are applied through the bundled Proton wrapper, so they do not
+  currently affect native Linux x86 games launched directly through FEX.
 - **QAM is unmapped on Ayaneo devices.** Use Home+A to open the Quick Access Menu.
 
 ## Credits
