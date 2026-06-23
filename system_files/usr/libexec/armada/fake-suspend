@@ -83,7 +83,9 @@ resume_radios() {
 
 runtime_pm_devices() {
     local dev
-    for dev in /sys/devices/platform/soc@0/*.gpu /sys/devices/platform/soc@0/*.usb; do
+    # Leave GPU runtime PM alone here; the GMU is known to wedge under
+    # rapid idle/resume churn on current devices.
+    for dev in /sys/devices/platform/soc@0/*.usb; do
         [[ -e "$dev" ]] && printf '%s\n' "$dev"
     done
 }
