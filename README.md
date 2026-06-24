@@ -39,7 +39,7 @@ Includes:
 | AYN Odin 2 | SM8550 | ✅ Tested |
 | AYN Thor | SM8550 | ✅ Tested |
 | AYN Odin 3 | SM8750 | ✅ Tested |
-| Retroid Pocket 6 | SM8550 | ⚪ Untested |
+| Retroid Pocket 6 | SM8550 | ✅ Tested |
 | AYANEO Pocket ACE | SM8550 | ⚪ Untested |
 | AYANEO Pocket DMG | SM8550 | ⚪ Untested |
 | AYANEO Pocket DS | SM8550 | ⚪ Untested |
