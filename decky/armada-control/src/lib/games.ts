@@ -11,9 +11,6 @@ export function availableGames(config: Config): GameRef[] {
   for (const game of config.installedGames || []) {
     if (game?.appid) games.set(String(game.appid), { appid: String(game.appid), name: game.name || `App ${game.appid}` });
   }
-  for (const [appid, game] of Object.entries(config.tweaks?.games || {})) {
-    if (game && typeof game === "object") games.set(String(appid), { appid: String(appid), name: game.name || games.get(String(appid))?.name || `App ${appid}` });
-  }
   return Array.from(games.values()).sort((a, b) => gameDisplayName(a).localeCompare(gameDisplayName(b)));
 }
 
