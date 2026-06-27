@@ -5,7 +5,6 @@ import { getConfig, savePowerConfig, saveTweaks } from "./backend";
 import { useDebouncedSave } from "./hooks/useDebouncedSave";
 import { tabIcons } from "./icons";
 import { currentGame } from "./lib/games";
-import { installQamProfileFix } from "./qamFix";
 import { styles } from "./styles";
 import { Compatibility } from "./tabs/Compatibility";
 import { Power } from "./tabs/Power";
@@ -61,25 +60,6 @@ export function Content() {
   }, [!!config]);
   useDebouncedSave({ config, field: "power", snapshot: savedPowerSnapshot, save: savePowerConfig, setConfig, onError: load });
   useDebouncedSave({ config, field: "tweaks", snapshot: savedTweaksSnapshot, save: saveTweaks, setConfig, onError: load });
-  // QAM dropdown CSS fix lives in Steam's tab, not ours; install once config is
-  // loaded and retry, since executeInTab can land before the row exists.
-  const profileKey = config ? Object.values(config.power.profiles || {}).map((p) => p.label).join(",") : "";
-  useEffect(() => {
-    if (!profileKey) return;
-    const labels = profileKey.split(",");
-    let cancelled = false;
-    let attempts = 0;
-    const install = () => {
-      if (cancelled) return;
-      installQamProfileFix(labels);
-      attempts += 1;
-      if (attempts < 5) window.setTimeout(install, 1500);
-    };
-    install();
-    return () => {
-      cancelled = true;
-    };
-  }, [profileKey]);
   if (!config) return <PanelSection title="Armada Control"><Field label={message} /></PanelSection>;
   const tabContent = (content: ReactNode) => (
     <div className="armada-control-tab-content">{content}</div>

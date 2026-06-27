@@ -6,6 +6,5 @@ declare global {
     settingsStore?: any;
     appDetailsStore?: any;
     Router?: any;
-    __armadaQamProfileFixObserver?: MutationObserver;
   }
 }
