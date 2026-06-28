@@ -67,7 +67,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Check build recipes
-        uses: ublue-os/just-action@bda593098a84a84973b002b4377709166a68be52 # v2
+        uses: ublue-os/just-action@30ab4659369934b65b655bf8d2fa4ddd6547d384 # v3
 
       - name: Get image version
         id: version
