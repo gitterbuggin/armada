@@ -188,12 +188,20 @@ build-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_build
 [group('Build Virtual Machine Image')]
 build-iso $target_image=("localhost/" + image_name) $tag=default_tag: && (_build-bib target_image tag "iso" "disk_config/iso.toml")
 
-# Output: ./output/armada-YYYYMMDD.img.gz
+# Output: ./output/armada-<version>.img.gz  (version = container label, date.sha)
 [group('Armada')]
 build-armada-image $target_image=("localhost/" + image_name) $tag=default_tag: (build-raw target_image tag)
-    @echo "Finalizing the freshly-built raw image..."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Finalizing the freshly-built raw image..."
+    version=$(podman inspect -t image "${target_image}:${tag}" \
+                | jq -r '.[0].Config.Labels["org.opencontainers.image.version"] // empty')
     ./post_process/preseed-flatpaks.sh output/image/disk.raw
     ./post_process/make-bootimg.sh output/image/disk.raw
+    # Name from the container's version so a flashed device traces to its build.
+    if [[ -n "$version" && "$version" != unknown ]]; then
+        export OUT="output/armada-${version}.img.gz"
+    fi
     ./post_process/finalize-armada-image.sh output/image/disk.raw
 
 [group('Build Virtual Machine Image')]
