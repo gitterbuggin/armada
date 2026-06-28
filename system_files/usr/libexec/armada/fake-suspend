@@ -58,6 +58,15 @@ radio_soft_blocked() {
 suspend_radios() {
     command -v rfkill >/dev/null 2>&1 || return 0
 
+    # Save the connected AP's channel for the directed resume scan.
+    rm -f "$SAVE_DIR/wifi-freq"
+    local wdev wfreq
+    for wdev in $(iw dev 2>/dev/null | awk '$1=="Interface"{print $2}'); do
+        iw dev "$wdev" link 2>/dev/null | grep -q "Connected to" || continue
+        wfreq="$(iw dev "$wdev" link 2>/dev/null | sed -n 's/^[[:space:]]*freq:[[:space:]]*\([0-9]\+\).*/\1/p' | head -1)"
+        [[ "$wfreq" =~ ^[0-9]+$ ]] && { printf '%s %s\n' "$wdev" "$wfreq" > "$SAVE_DIR/wifi-freq"; break; }
+    done
+
     : > "$SAVE_DIR/radios"
     local kind
     for kind in wifi bluetooth; do
@@ -79,6 +88,18 @@ resume_radios() {
         [[ -n "$kind" ]] || continue
         rfkill unblock "$kind" || log "failed to restore ${kind}"
     done < "$SAVE_DIR/radios"
+
+    # ath12k's first scan after the rfkill re-init is a slow full-band 6GHz sweep;
+    # prime the cache on the known channel instead. Detached so it can't gate display_on.
+    if [[ -r "$SAVE_DIR/wifi-freq" ]] && command -v iw >/dev/null 2>&1; then
+        local wdev wfreq
+        read -r wdev wfreq < "$SAVE_DIR/wifi-freq"
+        if [[ -n "$wdev" && "$wfreq" =~ ^[0-9]+$ ]]; then
+            systemd-run --collect --quiet --unit=armada-resume-scan \
+                iw dev "$wdev" scan freq "$wfreq" >/dev/null 2>&1 &&
+                log "queued scan $wdev $wfreq"
+        fi
+    fi
 }
 
 runtime_pm_devices() {
