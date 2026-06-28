@@ -418,6 +418,28 @@ set_origin() {
     sed -i "s|^container-image-reference=.*|container-image-reference=ostree-image-signed:docker://${bare}|" "$dst"
 }
 
+copy_bootc_ref() {
+    local ref="$1" target_commit="$2"
+    ostree refs --repo="$TARGET/ostree/repo" --force --create="$ref" "$target_commit"
+}
+
+copy_current_bootc_deployment() {
+    local parent ref target_commit
+
+    ostree pull-local --repo="$TARGET/ostree/repo" /sysroot/ostree/repo "$commit"
+
+    parent=$(ostree show --repo=/sysroot/ostree/repo "$commit" |
+        sed -n 's/^Parent:[[:space:]]*//p' | head -n1)
+    [[ -n $parent ]] && ostree pull-local --repo="$TARGET/ostree/repo" /sysroot/ostree/repo "$parent"
+
+    while IFS= read -r ref; do
+        target_commit=$(ostree rev-parse --repo=/sysroot/ostree/repo "$ref" 2>/dev/null || true)
+        if [[ $target_commit == "$commit" || ( -n $parent && $target_commit == "$parent" ) ]]; then
+            copy_bootc_ref "$ref" "$target_commit"
+        fi
+    done < <(ostree refs --repo=/sysroot/ostree/repo | sed -n 's#^\(ostree/container/\(image\|blob\)/.*\)#\1#p')
+}
+
 seed_kernel() {
     # armada-bootimg-sync only regenerates /KERNEL at shutdown; seed the first one.
     ESP="$TARGET/boot/efi" BOOTROOT="$TARGET/boot" \
@@ -528,7 +550,7 @@ deploy_to_internal() {
     commit=$(ostree admin status --json | jq -r '.deployments[] | select(.booted) | .checksum' | head -n1)
     [[ -n $commit && $commit != null ]] || { echo "ERROR: could not determine booted ostree commit" >&2; exit 1; }
 
-    ostree pull-local --repo="$TARGET/ostree/repo" /sysroot/ostree/repo "$commit"
+    copy_current_bootc_deployment
     # --no-merge: a fresh install takes the image's clean /etc, not the booted
     # system's /etc edits (the default upgrade-style merge would carry them over).
     ostree admin deploy --no-merge --sysroot="$TARGET" --os=default "$commit"
