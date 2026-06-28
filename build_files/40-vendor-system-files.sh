@@ -21,7 +21,6 @@ systemctl disable sshd.service || true
 systemctl enable sddm.service
 systemctl enable armada-session-default.service
 systemctl enable seatd.service
-systemctl enable armada-bootstrap-config.service
 systemctl enable armada-input-calibration.service
 systemctl enable armada-controller-type.service
 systemctl enable inputplumber.service
@@ -29,7 +28,6 @@ systemctl enable armada-device-quirks.service
 systemctl enable armada-fixups.service
 systemctl enable armada-installer-visibility.service
 systemctl enable armada-steamapps.service
-systemctl enable armada-steam-patches.service
 systemctl enable armada-powerd.service
 systemctl enable armada-steamos-manager.service
 systemctl --global enable armada-steamos-manager.service
