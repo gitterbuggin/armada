@@ -59,8 +59,35 @@ sudo cp "${REPO_ROOT}/post_process/armada.conf" "${WORK}/mnt/armada.conf"
 sudo sync
 sudo umount "${WORK}/mnt"
 
-# Android mounts Microsoft basic data; ROCKNIX ABL still reads plain FAT.
-sudo sfdisk --part-type "${LOOP}" 1 EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+# MBR, not GPT: a fixed-size GPT image flashed to a larger card strands the backup
+# GPT mid-disk and Android's vold rejects the card. MBR has no end-of-disk
+# structure, so it reads on any card. SD image only; internal installs stay GPT.
+TABLE=$(sudo sfdisk -J "${LOOP}")
+mapfile -t PARTS < <(jq -r '.partitiontable.partitions[] | "\(.start) \(.size)"' <<<"${TABLE}")
+[ "${#PARTS[@]}" -eq 3 ] || { echo "ERROR: expected 3 partitions, got ${#PARTS[@]}"; sudo sfdisk -l "${LOOP}"; exit 1; }
+read -r P1_START P1_SIZE <<<"${PARTS[0]}"
+read -r P2_START P2_SIZE <<<"${PARTS[1]}"
+read -r P3_START P3_SIZE <<<"${PARTS[2]}"
+SECTORS=$(sudo blockdev --getsz "${LOOP}")
+
+# Zero the two GPT copies (primary LBA 1-33, backup last 33 LBAs); dd avoids a
+# gdisk dependency. The guards refuse any layout where a zero could hit a partition.
+[ "$(jq -r '.partitiontable.sectorsize // 512' <<<"${TABLE}")" = 512 ] \
+    || { echo "ERROR: non-512-byte sectors; GPT-zero math assumes 512"; exit 1; }
+[ "${P1_START}" -ge 34 ] || { echo "ERROR: p1 starts inside the primary-GPT span"; exit 1; }
+[ "$((P3_START + P3_SIZE))" -le "$((SECTORS - 33))" ] || { echo "ERROR: p3 overlaps the backup-GPT span"; exit 1; }
+sudo dd if=/dev/zero of="${LOOP}" bs=512 seek=1 count=33 conv=notrunc status=none
+sudo dd if=/dev/zero of="${LOOP}" bs=512 seek=$((SECTORS - 33)) count=33 conv=notrunc status=none
+
+sudo sfdisk --label dos "${LOOP}" <<EOF
+${P1_START},${P1_SIZE},c,*
+${P2_START},${P2_SIZE},83
+${P3_START},${P3_SIZE},83
+EOF
+
+sudo sfdisk -J "${LOOP}" \
+    | jq -e '.partitiontable.label=="dos" and (.partitiontable.partitions|length)==3' >/dev/null \
+    || { echo "ERROR: MBR conversion verify failed"; sudo sfdisk -l "${LOOP}"; exit 1; }
 
 sudo losetup -d "${LOOP}"
 rm "${WORK}/loop"
