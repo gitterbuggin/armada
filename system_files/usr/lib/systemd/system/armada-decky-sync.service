@@ -1,7 +1,7 @@
 [Unit]
 Description=Seed Decky Loader and plugins into homebrew
 After=local-fs.target
-Before=armada-decky-loader.service
+Before=plugin_loader.service
 
 [Service]
 Type=oneshot
