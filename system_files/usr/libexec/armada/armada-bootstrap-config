@@ -102,8 +102,9 @@ def configure_ssh(data):
     if not value:
         return None
     enabled = truthy(value)
-    action = "enable" if enabled else "disable"
-    subprocess.run(["systemctl", action, "--now", "sshd.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["systemctl", "enable" if enabled else "disable", "sshd.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # this unit is Before=sshd.service, so a --now start deadlocks against its own ordering; queue it instead
+    subprocess.run(["systemctl", "start" if enabled else "stop", "--no-block", "sshd.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return enabled
 
 
