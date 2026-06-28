@@ -18,6 +18,10 @@ find /etc/NetworkManager/system-connections -name '*.nmconnection' -exec chmod 0
 
 systemctl disable getty@tty1.service || true
 systemctl disable sshd.service || true
+# bootupd targets x86 UEFI bootloaders; these boot via ABL + boot.img, so it is a no-op.
+systemctl disable bootloader-update.service || true
+# irqbalance re-spreads IRQs across all cores, overriding the irqaffinity=0-1 cmdline.
+systemctl disable irqbalance.service || true
 systemctl enable sddm.service
 systemctl enable armada-session-default.service
 systemctl enable seatd.service
