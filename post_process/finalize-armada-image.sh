@@ -54,6 +54,7 @@ done
 
 # Disable GRUB so ABL falls through to /KERNEL.
 if [ -d "${WORK}/mnt/EFI" ]; then sudo mv "${WORK}/mnt/EFI" "${WORK}/mnt/EFI.disabled"; fi
+sudo cp "${REPO_ROOT}/post_process/armada.conf" "${WORK}/mnt/armada.conf"
 
 sudo sync
 sudo umount "${WORK}/mnt"

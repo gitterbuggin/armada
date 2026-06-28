@@ -1,0 +1,15 @@
+[Unit]
+Description=Armada bootstrap config
+DefaultDependencies=no
+After=local-fs.target
+RequiresMountsFor=/boot/efi
+Before=NetworkManager.service sshd.service display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/armada/armada-bootstrap-config
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
