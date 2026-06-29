@@ -57,6 +57,9 @@ if [ -d "${WORK}/mnt/EFI" ]; then sudo mv "${WORK}/mnt/EFI" "${WORK}/mnt/EFI.dis
 sudo sync
 sudo umount "${WORK}/mnt"
 
+# Android shows this label when copying the ABL
+sudo fatlabel "${ESP}" ARMADA
+
 # MBR, not GPT: a fixed-size GPT image flashed to a larger card strands the backup
 # GPT mid-disk and Android's vold rejects the card. MBR has no end-of-disk
 # structure, so it reads on any card. SD image only; internal installs stay GPT.
