@@ -1,9 +1,10 @@
 #!/usr/bin/bash
 set -euo pipefail
 source /usr/lib/armada/bootimg-args
+source /usr/lib/armada/storage-lib
 
 ARMADA_REGISTRY="ghcr.io/virtudude/armada"
-DEVICE="${ARMADA_INTERNAL_DEVICE:-/dev/sda}"
+DEVICE="${ARMADA_INTERNAL_DEVICE:-$(armada_internal_device || true)}"
 ESP_GUID="c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
 ESP_MIB=512
 BOOT_MIB=1024
@@ -64,7 +65,7 @@ need_root() {
 
 need_cmds() {
     local missing=0
-    for cmd in blkid btrfs findmnt jq mkfs.btrfs mkfs.ext4 mkfs.vfat ostree parted partprobe sfdisk sgdisk udevadm; do
+    for cmd in blkid btrfs findmnt jq lsblk mkfs.btrfs mkfs.ext4 mkfs.vfat ostree parted partprobe realpath sfdisk sgdisk udevadm; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             echo "ERROR: missing required command: $cmd" >&2
             missing=1
@@ -74,9 +75,12 @@ need_cmds() {
 }
 
 check_device() {
+    if [[ -z $DEVICE ]]; then
+        echo "ERROR: could not determine internal storage; set ARMADA_INTERNAL_DEVICE=/dev/sdX" >&2
+        exit 1
+    fi
     if [[ ! -b $DEVICE ]]; then
-        echo "ERROR: internal storage device $DEVICE not found" >&2
-        echo "       set ARMADA_INTERNAL_DEVICE if internal storage isn't /dev/sda" >&2
+        echo "ERROR: internal storage device $DEVICE not found; set ARMADA_INTERNAL_DEVICE" >&2
         exit 1
     fi
 }
