@@ -82,8 +82,8 @@ sudo dd if=/dev/zero of="${LOOP}" bs=512 seek=$((SECTORS - 33)) count=33 conv=no
 
 sudo sfdisk --label dos "${LOOP}" <<EOF
 ${P1_START},${P1_SIZE},c,*
-${P2_START},${P2_SIZE},83
-${P3_START},${P3_SIZE},83
+${P2_START},${P2_SIZE},da
+${P3_START},${P3_SIZE},da
 EOF
 
 sudo sfdisk -J "${LOOP}" \
