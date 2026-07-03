@@ -5,8 +5,12 @@ cp -a /ctx/system_files/. /
 install -Dpm 0755 /packages/extest/libextest.so /usr/lib/extest/libextest.so
 
 # mkbootimg must be present for on-device /KERNEL rebuilds after OTA.
-bash /ctx/build_files/fetch-mkbootimg.sh /usr/libexec/armada
-chmod 0755 /usr/libexec/armada/mkbootimg.py /usr/libexec/armada/gki/generate_gki_certificate.py
+install -Dpm 0755 /ctx/build_files/vendor/mkbootimg/mkbootimg.py /usr/libexec/armada/mkbootimg.py
+install -Dpm 0755 /ctx/build_files/vendor/mkbootimg/gki/generate_gki_certificate.py /usr/libexec/armada/gki/generate_gki_certificate.py
+sha256sum -c <<'EOF'
+37d84b3d162e0bc62e36c1f4e1c63c85ea0caa9f29be023eb2f8efe006ad948c  /usr/libexec/armada/mkbootimg.py
+1bb1feec68a13da18d581aa2c631798f86f6bc10b55d587b2dd31446a0f8a203  /usr/libexec/armada/gki/generate_gki_certificate.py
+EOF
 
 chmod 0755 /usr/libexec/armada/*
 chmod 0755 /usr/libexec/os-session-select
