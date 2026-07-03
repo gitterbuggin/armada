@@ -26,6 +26,8 @@ dnf5 -y install --setopt=install_weak_deps=False /packages/inputplumber/inputplu
 # Patched NetworkManager: /etc/NetworkManager/ignore-sleep keeps wifi up across fake-suspend.
 dnf5 -y install --setopt=install_weak_deps=False /packages/networkmanager/*.rpm
 
+dnf5 -y install --setopt=install_weak_deps=False /packages/jupiter-hw-support/*.rpm
+
 # Avoid gamescope-session-ogui-steam/-powerstation; Terra's aarch64 deps are broken.
 dnf5 -y install --setopt=install_weak_deps=False --enable-repo=terra \
     gamescope-session \

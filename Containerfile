@@ -6,6 +6,7 @@ ARG KERNEL_PKG=ghcr.io/virtudude/armada-packages/kernel@sha256:0997220ec2155a915
 ARG INPUTPLUMBER_PKG=ghcr.io/virtudude/armada-packages/inputplumber@sha256:1df4f9fc74dbb41c7ebe33bb6934745a4ab01c002178ae2bd34e7e99cebafd35
 ARG EXTEST_PKG=ghcr.io/virtudude/armada-packages/extest@sha256:3b0d047706d5f3398972d433f0b76f6f2d953bf52383a428857ede13cc16a109
 ARG NETWORKMANAGER_PKG=ghcr.io/virtudude/armada-packages/networkmanager@sha256:f9b05673dc312d28660ac89e3bf268bd756a8f000dafa7c950f5dd5da22d5b80
+ARG JUPITER_HW_SUPPORT_PKG=ghcr.io/virtudude/armada-packages/jupiter-hw-support@sha256:1b92a9b703c5c7246996479b022eb711f917698a4e77bedb20f121331d956460
 
 FROM ${FEX_PKG} AS fex
 FROM ${MESA_PKG} AS mesa
@@ -14,6 +15,7 @@ FROM ${GAMESCOPE_PKG} AS gamescope
 FROM ${KERNEL_PKG} AS kernel
 FROM ${INPUTPLUMBER_PKG} AS inputplumber
 FROM ${NETWORKMANAGER_PKG} AS networkmanager
+FROM ${JUPITER_HW_SUPPORT_PKG} AS jupiter-hw-support
 FROM ${EXTEST_PKG} AS extest
 
 FROM docker.io/library/node:22-slim AS decky-build
@@ -40,6 +42,7 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=bind,from=kernel,source=/kernel,target=/packages/kernel \
     --mount=type=bind,from=inputplumber,source=/rpms,target=/packages/inputplumber \
     --mount=type=bind,from=networkmanager,source=/rpms,target=/packages/networkmanager \
+    --mount=type=bind,from=jupiter-hw-support,source=/rpms,target=/packages/jupiter-hw-support \
     --mount=type=bind,from=extest,source=/,target=/packages/extest \
     --mount=type=bind,from=decky-build,source=/build/dist,target=/packages/decky-dist \
     --mount=type=cache,dst=/var/cache \
