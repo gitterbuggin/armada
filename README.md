@@ -203,6 +203,10 @@ failed boot falls back to the previous image.
   currently affect native Linux x86 games launched directly through FEX.
 - **QAM is unmapped on Ayaneo devices.** Use Home+A to open the Quick Access Menu.
 
+## Community
+
+Join the Discord: [discord.gg/WSA8HKdpX](https://discord.gg/WSA8HKdpX)
+
 ## Credits
 
 - **[ROCKNIX](https://github.com/ROCKNIX):** bootloader, device support,
