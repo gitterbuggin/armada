@@ -5,6 +5,7 @@
 import json
 import os
 import pathlib
+import shutil
 import sys
 import time
 
@@ -12,6 +13,7 @@ import time
 BASE_FEX_CONFIG = pathlib.Path("/usr/share/fex-emu/Config.json")
 TWEAKS_CONFIG = pathlib.Path("/etc/armada/game-tweaks.json")
 FEX_PROFILES_CONFIG = pathlib.Path("/usr/share/armada/fex-profiles.json")
+PROTON_INJECT_SRC = pathlib.Path("/usr/share/armada/proton-inject/x86_64-linux-gnu")
 
 
 def appid():
@@ -114,6 +116,30 @@ def apply_fex(settings, game_id, profiles, env):
         tmp.unlink(missing_ok=True)
 
 
+def inject_x86_protocol_libs():
+    # pressure-vessel doesn't provide the x86 libwayland-client/libxkbcommon the game
+    # needs, so it can't load them (dead controller). Remove once pressure-vessel supplies
+    # them.
+    if not PROTON_INJECT_SRC.is_dir():
+        return
+    for tool in os.environ.get("STEAM_COMPAT_TOOL_PATHS", "").split(":"):
+        files = pathlib.Path(tool) / "files" if tool else None
+        if files is None:
+            continue
+        lib_dir = files / "lib" / "x86_64-linux-gnu"
+        if not lib_dir.is_dir() or (files / "bin-arm64").is_dir():  # skip arm64ec Proton
+            continue
+        # link targets must be copied before the symlinks that point at them
+        for src in sorted(PROTON_INJECT_SRC.iterdir(), key=pathlib.Path.is_symlink):
+            dest = lib_dir / src.name
+            if dest.exists() or dest.is_symlink():
+                continue
+            if src.is_symlink():
+                os.symlink(os.readlink(src), dest)
+            else:
+                shutil.copy2(src, dest)
+
+
 def main():
     args = sys.argv[1:]
     if not args:
@@ -126,6 +152,11 @@ def main():
         apply_fex(settings, game_id, contract["profiles"], os.environ)
     except Exception as exc:
         print(f"armada-game-launch: failed to apply settings: {exc}", file=sys.stderr)
+
+    try:
+        inject_x86_protocol_libs()
+    except Exception as exc:
+        print(f"armada-game-launch: protocol-lib inject skipped: {exc}", file=sys.stderr)
 
     try:
         os.execv(args[0], args)
