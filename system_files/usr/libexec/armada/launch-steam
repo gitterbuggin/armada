@@ -27,10 +27,35 @@ if [[ -d "${steam_runtime_bin}" ]]; then
     export PATH="${steam_runtime_bin}:${PATH}"
 fi
 
-# Official Proton 11.0 (ARM64) requires steamrt4 (4185400), which armada doesn't install. Steam restores it on update.
-official_proton_manifest="${steam_root}/steamapps/common/Proton 11.0 (ARM64)/toolmanifest.vdf"
-if [[ -f "${official_proton_manifest}" ]] && grep -q require_tool_appid "${official_proton_manifest}"; then
-    sed -i '/require_tool_appid/d' "${official_proton_manifest}"
+# Register the official Proton 11.0 (ARM64) as a compat tool only once its runner is
+# fully installed (StateFlags bit 4), so it isn't offered while unusable. Steam only
+# rescans compatibilitytools.d at startup, so this must run before exec.
+proton11_runner="${steam_root}/steamapps/common/Proton 11.0 (ARM64)"
+proton11_reg="${steam_root}/compatibilitytools.d/proton-11-arm64"
+proton11_flags="$(grep -oP '"StateFlags"\s+"\K[0-9]+' "${steam_root}/steamapps/appmanifest_4628740.acf" 2>/dev/null || true)"
+if [[ -n "${proton11_flags}" ]] && (( proton11_flags & 4 )); then
+    # steamrt4 (4185400) isn't installed; re-strip because Steam restores it on update.
+    if grep -q require_tool_appid "${proton11_runner}/toolmanifest.vdf" 2>/dev/null; then
+        sed -i '/require_tool_appid/d' "${proton11_runner}/toolmanifest.vdf"
+    fi
+    mkdir -p "${proton11_reg}"
+    cat > "${proton11_reg}/compatibilitytool.vdf" <<EOF
+"compatibilitytools"
+{
+  "compat_tools"
+  {
+    "proton11_arm64"
+    {
+      "install_path" "${proton11_runner}"
+      "display_name" "Proton 11.0 (ARM64)"
+      "from_oslist"  "windows"
+      "to_oslist"    "linux"
+    }
+  }
+}
+EOF
+else
+    rm -rf "${proton11_reg}"
 fi
 
 touch "${steam_root}/.cef-enable-remote-debugging"

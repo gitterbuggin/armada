@@ -131,35 +131,8 @@ rm -rf "${PROTON_DIR:?}/${PROTON_TOOL_NAME}"
 mv "${PROTON_DIR}/${PROTON_ARCHIVE_NAME}" "${PROTON_DIR}/${PROTON_TOOL_NAME}"
 # Missing runtime app makes Steam fall back to Proton 10.
 sed -i '/require_tool_appid/d' "${PROTON_DIR}/${PROTON_TOOL_NAME}/toolmanifest.vdf"
-cat > "${PROTON_DIR}/${PROTON_TOOL_NAME}/armada-proton" <<'EOF'
-#!/bin/sh
-exec /usr/libexec/armada/armada-proton-wrapper "$(dirname "$0")/proton" "$@"
-EOF
-chmod +x "${PROTON_DIR}/${PROTON_TOOL_NAME}/armada-proton"
-sed -i 's#"commandline"[[:space:]]*"/proton #"commandline" "/armada-proton #' \
-    "${PROTON_DIR}/${PROTON_TOOL_NAME}/toolmanifest.vdf"
 python3 /ctx/build_files/set-steam-default-compat.py "${STEAM_HOME}" "${PROTON_TOOL_NAME}" "${PROTON_DIR}"
 rm -f "/tmp/${PROTON_TAR}" "/tmp/${PROTON_ARCHIVE_NAME}.sha512sum"
-
-# Metadata stub for Valve's official Proton 11.0 (ARM64) (appid 4628740); Steam downloads the
-# runner on install.
-OFFICIAL_PROTON_DIR="${PROTON_DIR}/proton-11-arm64"
-mkdir -p "${OFFICIAL_PROTON_DIR}"
-cat > "${OFFICIAL_PROTON_DIR}/compatibilitytool.vdf" <<'EOF'
-"compatibilitytools"
-{
-  "compat_tools"
-  {
-    "proton11_arm64"
-    {
-      "install_path" "/var/home/armada/.local/share/Steam/steamapps/common/Proton 11.0 (ARM64)"
-      "display_name" "Proton 11.0 (ARM64)"
-      "from_oslist"  "windows"
-      "to_oslist"    "linux"
-    }
-  }
-}
-EOF
 
 # Pin Steam, Proton, and the FEX rootfs to their own rechunk layers (build-chunked-oci reads the
 # user.component xattr) so a system_files change doesn't re-pull them every OTA.

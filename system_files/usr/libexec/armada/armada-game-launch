@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Game launch-option prefix wrapper ("armada-game-launch %command%"). Applies
+# per-game settings via FEX_APP_CONFIG, the only knob every compat tool's FEX reads
+# (the on-disk FEX config files are seen only by the system FEX, not arm64ec/wow64).
 import json
 import os
 import pathlib
@@ -51,14 +54,14 @@ def merged_settings(tweaks, game_id):
     settings = dict(tweaks.get("global", {}))
     if game_id:
         game_settings = tweaks.get("games", {}).get(str(game_id))
-        if isinstance(game_settings, dict) and game_settings.get("enabled") is True:
+        # Legacy configs may carry enabled: false; skip those, apply the rest.
+        if isinstance(game_settings, dict) and game_settings.get("enabled") is not False:
             settings.update(game_settings)
     return settings
 
 
 def thunk_settings(settings, modules):
-    # Thunks are part of Custom; presets always run the default (all-on) set.
-    thunks = settings.get("thunks") if settings.get("fexProfile") == "custom" else None
+    thunks = settings.get("thunks")
     if not isinstance(thunks, dict):
         thunks = {}
     return {name: 1 if thunks.get(name, True) else 0 for name in modules}
@@ -81,7 +84,7 @@ def resolve_fex_config(settings, profiles):
     return profiles["default"]["config"]
 
 
-def write_fex_config(settings, game_id, profiles):
+def apply_fex(settings, game_id, profiles, env):
     with BASE_FEX_CONFIG.open(encoding="utf-8") as f:
         config = json.load(f)
     allowed = set().union(*(profile["config"].keys() for profile in profiles.values()))
@@ -106,29 +109,28 @@ def write_fex_config(settings, game_id, profiles):
             json.dump(config, f, indent=2, sort_keys=True)
             f.write("\n")
         os.replace(tmp, target)
-        os.environ["FEX_APP_CONFIG"] = str(target)
+        env["FEX_APP_CONFIG"] = str(target)
     finally:
         tmp.unlink(missing_ok=True)
 
 
 def main():
-    if len(sys.argv) < 2:
-        raise SystemExit("usage: armada-proton-wrapper PROTON_ENTRYPOINT [ARGS...]")
+    args = sys.argv[1:]
+    if not args:
+        raise SystemExit("usage: armada-game-launch COMMAND [ARGS...]")
 
-    real_proton = sys.argv[1]
-    args = [real_proton, *sys.argv[2:]]
     game_id = appid()
     try:
         contract = load_fex_contract()
         settings = merged_settings(load_tweaks(contract["defaults"]), game_id)
-        write_fex_config(settings, game_id, contract["profiles"])
+        apply_fex(settings, game_id, contract["profiles"], os.environ)
     except Exception as exc:
-        print(f"armada-proton: failed to write FEX config: {exc}", file=sys.stderr)
+        print(f"armada-game-launch: failed to apply settings: {exc}", file=sys.stderr)
 
     try:
-        os.execv(real_proton, args)
+        os.execv(args[0], args)
     except OSError as exc:
-        raise SystemExit(f"armada-proton: failed to exec Proton: {exc}")
+        raise SystemExit(f"armada-game-launch: failed to exec game: {exc}")
 
 
 if __name__ == "__main__":
