@@ -43,8 +43,8 @@ Includes:
 | KONKR Pocket FIT (G3 Gen 3) | SM8650 | ✅ Tested |
 | AYANEO Pocket S2 | SM8650 | ⚪ Untested |
 | AYANEO Pocket ACE | SM8550 | ✅ Tested |
+| AYANEO Pocket DS | SM8550 | ✅ Tested |
 | AYANEO Pocket DMG | SM8550 | ⚪ Untested |
-| AYANEO Pocket DS | SM8550 | 🟢 Verified |
 | AYANEO Pocket S 2K | SM8550 | ⚪ Untested |
 
 ## Flash to SD card
