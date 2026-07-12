@@ -1,18 +1,36 @@
-import { ButtonItem, Field, PanelSection, ToggleField } from "@decky/ui";
+import {
+  ButtonItem,
+  DialogBody,
+  DialogButton,
+  DialogFooter,
+  Field,
+  ModalRoot,
+  PanelSection,
+  ToggleField,
+  showModal,
+} from "@decky/ui";
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { saveCompatApplied } from "../backend";
 import { SelectEdit } from "../components/widgets";
 import { getGlobalResolution, setGlobalResolution } from "../lib/steamSettings";
 import { clone } from "../lib/util";
 import { availableGames, editTargetOptions } from "../lib/games";
 import {
   DEFAULT_WINDOWS_COMPAT_TOOL,
-  currentCompatTool,
+  FOLLOW_STEAM_COMPAT,
+  USE_DEFAULT_COMPAT,
+  compatSelection,
   getAppCompatTools,
   getProtonTools,
+  handledGameAppids,
+  markCompatHandled,
   migrateWindowsCompatTool,
   resetCompatToolToDefault,
-  resolveCompatTool,
+  resetAllCompatTools,
+  resolveCompatState,
+  resolveGameAppids,
+  setAutoApplyCompat,
   setWindowsCompatTool,
   specifyCompatTool,
 } from "../lib/steamCompat";
@@ -42,10 +60,29 @@ const thunkModules = [
   { module: "WaylandClient", label: "Host Wayland" },
 ];
 
+function ConfirmResetAllModal({ closeModal, onConfirm }: { closeModal?: () => void; onConfirm: () => void }) {
+  const confirm = () => {
+    closeModal?.();
+    onConfirm();
+  };
+  return (
+    <ModalRoot onCancel={closeModal}>
+      <DialogBody>
+        This removes all per-game Armada settings, resets resolution overrides, applies the default Proton where Steam selects Proton, and leaves native Linux selections with Steam.
+      </DialogBody>
+      <DialogFooter>
+        <DialogButton onClick={confirm}>Reset All Games</DialogButton>
+        <DialogButton onClick={closeModal}>Cancel</DialogButton>
+      </DialogFooter>
+    </ModalRoot>
+  );
+}
+
 export function Compatibility({ config, setConfig }: { config: Config; setConfig: Dispatch<SetStateAction<Config | null>> }) {
   const [resolution, setResolution] = useState("Default");
   const [defaultResolution, setDefaultResolution] = useState(getGlobalResolution());
   const [resolutionMessage, setResolutionMessage] = useState("");
+  const [resettingAll, setResettingAll] = useState(false);
   const [customSelected, setCustomSelected] = useState(false);
   const [showThunks, setShowThunks] = useState(false);
   const [compatTools, setCompatTools] = useState<CompatTool[]>([]);
@@ -62,6 +99,7 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
   selectedAppidRef.current = game?.appid || "";
   const tweaks = config.tweaks;
   const apps = window.SteamClient?.Apps;
+  const persistHandledGames = () => saveCompatApplied(handledGameAppids()).catch(() => {});
   useEffect(() => {
     let cancelled = false;
     async function loadResolution() {
@@ -105,9 +143,9 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
     }
     const appid = game.appid;
     let cancelled = false;
-    setCurrentTool(currentCompatTool(appid));
-    resolveCompatTool(appid).then((tool) => {
-      if (!cancelled) setCurrentTool(tool);
+    setCurrentTool(FOLLOW_STEAM_COMPAT);
+    resolveCompatState(appid).then((state) => {
+      if (!cancelled) setCurrentTool(compatSelection(state));
     });
     getAppCompatTools(appid).then((tools) => {
       if (!cancelled) setPerGameTools(tools);
@@ -120,19 +158,23 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
     if (!apps?.RegisterForAppOverviewChanges) return;
     let cancelled = false;
     let timer: number | undefined;
-    apps.RegisterForAppOverviewChanges(() => {
+    const handle = apps.RegisterForAppOverviewChanges(() => {
       const appid = selectedAppidRef.current;
       if (!appid || cancelled) return;
       if (timer !== undefined) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        resolveCompatTool(appid).then((tool) => {
-          if (!cancelled && selectedAppidRef.current === appid) setCurrentTool(tool);
+        resolveCompatState(appid).then((state) => {
+          if (!cancelled && selectedAppidRef.current === appid) setCurrentTool(compatSelection(state));
         }).catch(() => {});
       }, 250);
     });
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
+      try {
+        handle?.unregister?.();
+      } catch (error) {
+      }
     };
   }, [apps]);
   useEffect(() => {
@@ -164,7 +206,9 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
       return next;
     });
     try {
-      setCurrentTool(await resetCompatToolToDefault(appid));
+      const tool = await resetCompatToolToDefault(appid);
+      setCurrentTool(tool === globalTool ? USE_DEFAULT_COMPAT : tool || FOLLOW_STEAM_COMPAT);
+      persistHandledGames();
     } catch (error) {
     }
     if (apps?.SetAppResolutionOverride) {
@@ -196,6 +240,43 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
       setResolutionMessage("Failed to set default resolution");
     }
   };
+  const resetAllGames = async () => {
+    if (resettingAll) return;
+    setResettingAll(true);
+    setConfig((current) => {
+      if (!current) return current;
+      const next = clone(current);
+      next.tweaks.games = {};
+      return next;
+    });
+    try {
+      const gameAppids = await resolveGameAppids(games.map((installed) => installed.appid));
+      let nextResolution = 0;
+      const resetResolution = async () => {
+        while (nextResolution < gameAppids.length) {
+          const appid = gameAppids[nextResolution++];
+          if (!apps?.SetAppResolutionOverride) continue;
+          try {
+            await apps.SetAppResolutionOverride(Number(appid), "Default");
+          } catch (error) {
+          }
+        }
+      };
+      await Promise.all([
+        resetAllCompatTools(gameAppids),
+        Promise.all(Array.from({ length: Math.min(10, gameAppids.length) }, resetResolution)),
+      ]);
+      await saveCompatApplied(handledGameAppids());
+      setResolution("Default");
+      if (game?.appid) setCurrentTool(compatSelection(await resolveCompatState(game.appid)));
+    } catch (error) {
+    } finally {
+      setResettingAll(false);
+    }
+  };
+  const confirmResetAllGames = () => {
+    showModal(<ConfirmResetAllModal onConfirm={() => { void resetAllGames(); }} />);
+  };
   const gameOptions = editTargetOptions(config);
   // "" is the explicit Default target, not "nothing selected"; store a sentinel
   // so it doesn't fall back to the running game in the selectedGame derivation.
@@ -217,14 +298,31 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
     setWindowsCompatTool(name);
     patchSettings({ windowsCompatTool: name });
     await migrateWindowsCompatTool(config.installedGames.map((installed) => installed.appid), oldTool, name);
+    persistHandledGames();
   };
-  const perGameToolOptions = perGameTools.map((tool) => ({ data: tool.id, label: tool.label }));
+  const selectableTools = new Map<string, CompatTool>();
+  for (const tool of [...perGameTools, ...compatTools]) selectableTools.set(tool.id, tool);
+  if (currentTool && currentTool !== USE_DEFAULT_COMPAT && currentTool !== FOLLOW_STEAM_COMPAT && !selectableTools.has(currentTool)) {
+    selectableTools.set(currentTool, { id: currentTool, label: currentTool });
+  }
+  const perGameToolOptions = [
+    { data: USE_DEFAULT_COMPAT, label: "Use Default" },
+    { data: FOLLOW_STEAM_COMPAT, label: "Follow Steam" },
+    ...Array.from(selectableTools.values()).map((tool) => ({ data: tool.id, label: tool.label })),
+  ];
   const onSelectPerGameTool = async (choice: any) => {
     if (!game?.appid) return;
-    const target = String(choice);
+    const selection = String(choice);
+    const target = selection === USE_DEFAULT_COMPAT
+      ? globalTool
+      : selection === FOLLOW_STEAM_COMPAT
+        ? ""
+        : selection;
     try {
       await specifyCompatTool(game.appid, target);
-      setCurrentTool(target);
+      markCompatHandled(game.appid);
+      persistHandledGames();
+      setCurrentTool(selection);
     } catch (error) {
     }
   };
@@ -264,6 +362,14 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
         {editingDefault ? (
           <>
             <SelectEdit labelBelow label="Default Proton" value={globalTool} options={toolOptions} onChange={onSelectGlobalDefault} />
+            <ToggleField
+              label="Apply to New Games"
+              checked={tweaks.global.autoApplyCompat !== false}
+              onChange={(enabled) => {
+                setAutoApplyCompat(enabled);
+                patchSettings({ autoApplyCompat: enabled });
+              }}
+            />
             <SelectEdit label="Game Resolution" value={defaultResolution} options={resolutionOptions} onChange={setSteamDefaultResolution} />
           </>
         ) : (
@@ -296,7 +402,13 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
             Reset to Default
           </ButtonItem>
         </PanelSection>
-      ) : null}
+      ) : (
+        <PanelSection>
+          <ButtonItem layout="below" disabled={resettingAll} onClick={confirmResetAllGames}>
+            {resettingAll ? "Resetting..." : "Reset All Games"}
+          </ButtonItem>
+        </PanelSection>
+      )}
     </>
   );
 }

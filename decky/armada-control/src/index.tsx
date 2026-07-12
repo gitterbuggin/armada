@@ -1,17 +1,37 @@
 import { definePlugin } from "@decky/api";
-import { getConfig, getInstalledGames } from "./backend";
+import { getCompatApplied, getConfig, getInstalledGames, saveCompatApplied } from "./backend";
 import { Content } from "./Content";
-import { registerDownloadWatcher, setWindowsCompatTool, sweepInstalledGames } from "./lib/steamCompat";
+import {
+  configureCompatPolicy,
+  handledGameAppids,
+  registerDownloadWatcher,
+  sweepInstalledGames,
+} from "./lib/steamCompat";
 
 export default definePlugin(() => {
-  const unregisterDownloadWatcher = registerDownloadWatcher();
+  let unregisterDownloadWatcher = () => {};
+  const persistHandledGames = () => {
+    saveCompatApplied(handledGameAppids()).catch(() => {});
+  };
   let cancelled = false;
-  Promise.all([getConfig(), getInstalledGames()])
-    .then(([config, games]) => {
+  const handledRequest = getCompatApplied()
+    .then((appids) => ({ appids, loaded: true }))
+    .catch(() => ({ appids: [] as string[], loaded: false }));
+  Promise.all([getConfig(), getInstalledGames(), handledRequest])
+    .then(([config, games, handled]) => {
       if (cancelled) return;
-      setWindowsCompatTool(config.tweaks?.global?.windowsCompatTool);
+      configureCompatPolicy(
+        config.tweaks?.global?.windowsCompatTool,
+        handled.loaded && config.tweaks?.global?.autoApplyCompat !== false,
+        handled.appids,
+      );
+      const persist = handled.loaded ? persistHandledGames : () => {};
+      unregisterDownloadWatcher = registerDownloadWatcher(persist);
       window.setTimeout(() => {
-        if (!cancelled) sweepInstalledGames(games.map((game) => game.appid));
+        if (cancelled) return;
+        sweepInstalledGames(games.map((game) => game.appid))
+          .then(persist)
+          .catch(() => {});
       }, 3000);
     })
     .catch(() => {});

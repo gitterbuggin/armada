@@ -16,6 +16,7 @@ CONFIG_PATHS = {
     "power": Path("/etc/armada/power-profiles.conf"),
     "tweaks": Path("/etc/armada/game-tweaks.json"),
     "calibration": Path("/etc/armada/input-calibration.json"),
+    "compat-applied": Path("/var/lib/armada/compat-applied.json"),
 }
 CALIBRATION_PARAMS = (
     "axis_leftx_min",

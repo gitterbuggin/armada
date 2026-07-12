@@ -5,6 +5,7 @@ from pathlib import Path
 from .privileged import call
 
 TWEAKS_CONFIG = Path("/etc/armada/game-tweaks.json")
+COMPAT_APPLIED_STATE = Path("/var/lib/armada/compat-applied.json")
 FEX_PROFILES_CONFIG = Path("/usr/share/armada/fex-profiles.json")
 PLUGIN_FEX_PROFILES_CONFIG = Path(__file__).resolve().parent.parent / "fex-profiles.json"
 
@@ -72,3 +73,22 @@ def sanitize_tweaks(data):
 
 def save_tweaks(data):
     call("write_config", name="tweaks", text=json.dumps(sanitize_tweaks(data), indent=2, sort_keys=True) + "\n")
+
+
+def load_compat_applied():
+    try:
+        with COMPAT_APPLIED_STATE.open(encoding="utf-8") as f:
+            loaded = json.load(f)
+    except (OSError, ValueError):
+        return []
+    appids = loaded.get("appids") if isinstance(loaded, dict) else None
+    if not isinstance(appids, list):
+        return []
+    return sorted({str(appid) for appid in appids if str(appid).isdigit()}, key=int)
+
+
+def save_compat_applied(appids):
+    clean = sorted({str(appid) for appid in appids if str(appid).isdigit()}, key=int)
+    text = json.dumps({"appids": clean}, indent=2, sort_keys=True) + "\n"
+    call("write_config", name="compat-applied", text=text)
+    return clean
