@@ -446,6 +446,11 @@ class ArmadaPower:
         except ValueError:
             return -1
 
+    def cpu_max_target(self, settings, policy_id, freqs):
+        if self.cpu_device_class() in self.underclock_config:
+            return settings["cpu_max_policy"].get(policy_id, freqs[-1])
+        return int(freqs[-1] * settings["cpu_max"])
+
     def profile_settings(self):
         return self.profile_config.get(self.profile, self.profile_config["balanced"])
 
@@ -466,10 +471,7 @@ class ArmadaPower:
                 continue
             self.write_governor(policy, settings["cpu_governor"])
             write_text(policy / "scaling_min_freq", freqs[0])
-            target = settings["cpu_max_policy"].get(
-                self.policy_id(policy),
-                int(freqs[-1] * settings["cpu_max"]),
-            )
+            target = self.cpu_max_target(settings, self.policy_id(policy), freqs)
             write_text(policy / "scaling_max_freq", self.choose_at_most(freqs, target))
         if self.gpu and self.gpu_level == "auto":
             self.apply_gpu_auto(settings)
@@ -482,7 +484,7 @@ class ArmadaPower:
             if not freqs:
                 continue
             policy_id = self.policy_id(policy)
-            target = settings["cpu_max_policy"].get(policy_id, int(freqs[-1] * settings["cpu_max"]))
+            target = self.cpu_max_target(settings, policy_id, freqs)
             caps[f"policy{policy_id}"] = self.choose_at_most(freqs, target)
         return caps
 
