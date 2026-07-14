@@ -16,6 +16,9 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 BUS_NAME = "org.armada.Power"
 OBJECT_PATH = "/org/armada/Power"
 IFACE = "org.armada.Power1"
+LOGIN1_NAME = "org.freedesktop.login1"
+LOGIN1_PATH = "/org/freedesktop/login1"
+LOGIN1_IFACE = "org.freedesktop.login1.Manager"
 PROFILES = ["eco", "balanced", "performance"]
 STATE_FILE = Path("/var/lib/armada/powerd.state")
 FACTORY_CONFIG_FILE = Path("/usr/share/armada/power-profiles.conf")
@@ -866,6 +869,24 @@ class ArmadaPower:
             self.handle_get_property,
             self.handle_set_property,
         )
+        if self.env.get("ARMADA_SUSPEND_MODE", "fake") != "fake":
+            connection.signal_subscribe(
+                LOGIN1_NAME,
+                LOGIN1_IFACE,
+                "PrepareForSleep",
+                LOGIN1_PATH,
+                None,
+                Gio.DBusSignalFlags.NONE,
+                self.handle_prepare_for_sleep,
+            )
+
+    def handle_prepare_for_sleep(
+        self, _connection, _sender, _path, _iface, _signal, params
+    ):
+        if not params.unpack()[0]:
+            self.apply_profile()
+            if self.gpu_level == "manual" and self.manual_gpu_clock:
+                self.set_gpu_manual_clock(self.manual_gpu_clock)
 
 
 def main():
