@@ -105,9 +105,20 @@ build $target_image=image_name $tag=default_tag:
         SECRET_ARGS+=("--secret" "id=GITHUB_TOKEN,env=GITHUB_TOKEN")
     fi
 
+    # Emulated x86_64 -> arm64 builds: podman's default seccomp profile returns
+    # ENOSYS for unlisted syscalls, which qemu-user trips (e.g. tar during
+    # kernel extraction: "Cannot open: Function not implemented"). Auto-enable
+    # unconfined seccomp when the host isn't aarch64; native arm64 builds (incl.
+    # CI) keep the default profile. ARMADA_BUILD_UNCONFINED=1 forces it on.
+    SECURITY_ARGS=()
+    if [[ -n "${ARMADA_BUILD_UNCONFINED:-}" || "$(uname -m)" != "aarch64" ]]; then
+        SECURITY_ARGS+=("--security-opt" "seccomp=unconfined")
+    fi
+
     podman build \
         "${BUILD_ARGS[@]}" \
         "${SECRET_ARGS[@]}" \
+        "${SECURITY_ARGS[@]}" \
         --platform linux/arm64 \
         --pull="${PULL_POLICY}" \
         --tag "${target_image}:${tag}" \
