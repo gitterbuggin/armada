@@ -231,6 +231,22 @@ build-armada-image $target_image=("localhost/" + image_name) $tag=default_tag: (
     fi
     ./post_process/finalize-armada-image.sh output/image/disk.raw
 
+# Output: ./output/armada-odin-<version>.img.gz — SDM845 AYN Odin variant.
+# Boots via U-Boot UEFI (flashed to the Android boot slot) instead of the
+# ROCKNIX ABL, so EFI stays enabled and no /KERNEL boot.img is staged.
+[group('Armada')]
+build-armada-image-odin $target_image=("localhost/" + image_name) $tag=default_tag: (build-raw target_image tag)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Finalizing the freshly-built raw image (Odin variant)..."
+    version=$(podman inspect -t image "${target_image}:${tag}" \
+                | jq -r '.[0].Config.Labels["org.opencontainers.image.version"] // empty')
+    ./post_process/preseed-flatpaks.sh output/image/disk.raw
+    if [[ -n "$version" && "$version" != unknown ]]; then
+        export OUT="output/armada-odin-${version}.img.gz"
+    fi
+    ARMADA_VARIANT=odin ./post_process/finalize-armada-image.sh output/image/disk.raw
+
 [group('Build Virtual Machine Image')]
 rebuild-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "qcow2" "disk_config/disk.toml")
 

@@ -46,6 +46,12 @@ Includes:
 | AYANEO Pocket DS | SM8550 | ✅ Tested |
 | AYANEO Pocket DMG | SM8550 | ✅ Tested |
 | AYANEO Pocket S 2K | SM8550 | ⚪ Untested |
+| AYN Odin / Odin Pro | SDM845 | 🚧 In development |
+
+> [!NOTE]
+> The original AYN Odin (Snapdragon 845) uses a different boot path and its
+> own image variant — see [AYN Odin (SDM845)](#ayn-odin-sdm845) below. The
+> Odin Lite (MediaTek) is not supported.
 
 ## Flash to SD card
 
@@ -196,6 +202,43 @@ settings:
 - **Preview** is the bleeding edge channel. It follows the latest commits on
   `main` and may contain changes that are incomplete or have received little
   on device testing.
+
+## AYN Odin (SDM845)
+
+Support for the original Odin / Odin Pro is in development on the
+`sdm845-odin` branches of this repo and armada-packages. It differs from the
+SM8550+ devices in two ways:
+
+- **Boot path.** There is no ROCKNIX ABL for SDM845. Instead, a U-Boot image
+  (built from [sigmaris' Odin port](https://sigmaris.info/blog/2025/01/ayn-odin-u-boot/))
+  is flashed once to the *inactive* Android A/B boot slot and provides UEFI;
+  Armada then boots through its normal EFI/GRUB path from SD. Android remains
+  on the other slot. Flash instructions ship on the SD card in `odin_uboot/`
+  (see [odin/README](odin/README)).
+- **CPU baseline.** The Odin's Cortex-A75/A55 lack the dotprod/i8mm
+  instructions Armada's tuned packages assume, so fex, mesa, gamescope, and
+  mangohud must be built with
+  `ARMADA_MARCH="-march=armv8.2-a+fp16 -mtune=cortex-a75"` (see
+  armada-packages `toolchain.env`) and swapped in via `ARMADA_LOCAL_PKGS`.
+
+Build the Odin image with:
+
+```bash
+# in armada-packages: kernel with SDM845 support, U-Boot, A75-safe variants
+just image kernel
+just artifacts uboot-odin
+for p in fex mesa gamescope mangohud; do
+    ARMADA_MARCH="-march=armv8.2-a+fp16 -mtune=cortex-a75" just image "$p"
+done
+
+# in armada
+ARMADA_LOCAL_PKGS="kernel fex mesa gamescope mangohud" just build
+just build-armada-image-odin
+```
+
+Hardware expectations: V1-screen units only for now (Innolux TD4328 panel);
+GPU (Adreno 630/turnip), Wi-Fi/BT (WCN3990), controller, battery gauge, and
+audio all have mainline or ported drivers but are unverified on hardware.
 
 ## Known issues
 

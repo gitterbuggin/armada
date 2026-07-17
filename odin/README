@@ -1,0 +1,65 @@
+Armada on the AYN Odin / Odin Pro (Snapdragon 845)
+==================================================
+
+Unlike Armada's SM8550+ devices, the original Odin boots Linux through
+U-Boot: the stock Android bootloader (ABL) chain-loads a U-Boot image from
+one of the Android A/B boot slots, and U-Boot provides UEFI to boot Armada's
+GRUB from this SD card. Android stays on the other slot — switch slots to
+switch OS.
+
+U-Boot images in this folder (from armada-packages/uboot-odin, based on
+https://github.com/sigmaris/u-boot 'odin' branch):
+
+  uboot-ayn-odin.img     Odin / Odin Pro (and Odin Base)
+  uboot-ayn-odin-m2.img  Odin M2 only
+
+The Odin Lite is MediaTek-based and is NOT supported.
+
+One-time flash (needs a PC with fastboot, USB-C cable):
+
+1. Copy this folder's .img files to the PC.
+
+2. Power off the Odin. Hold VOL- and plug in USB-C (or hold VOL- + POWER)
+   until the green START/fastboot screen appears.
+
+3. Find the active Android slot:
+
+     fastboot getvar current-slot
+
+   The commands below assume the answer was "a", so Linux goes to slot "b".
+   If it said "b", swap a and b throughout.
+
+4. Erase the dtbo of the Linux slot (Android would otherwise apply its
+   device tree overlays over U-Boot's device tree and break it):
+
+     fastboot erase dtbo_b
+
+5. Tethered test boot first (nothing is flashed yet; SD card inserted):
+
+     fastboot boot uboot-ayn-odin.img
+
+   If U-Boot appears on screen and boots Armada from SD, make it permanent:
+
+     fastboot flash boot_b uboot-ayn-odin.img
+     fastboot --set-active=b
+     fastboot reboot
+
+Switching between Armada and Android:
+
+  Boot to fastboot and run `fastboot --set-active=a` (Android) or
+  `fastboot --set-active=b` (Armada). The Project Valhalla multiboot ABL
+  (github.com/ProjectValhalla) can also be used for an on-device menu.
+
+Going back to stock:
+
+  Nothing on internal storage is modified except the Linux slot's boot and
+  dtbo partitions, which held only an inactive copy of Android's kernel.
+  `fastboot --set-active=a` restores Android; reflashing the stock boot/dtbo
+  images to slot b (from AYN's firmware packages) fully reverts it.
+
+Notes:
+
+  - Screen support currently targets the V1 panel (Innolux TD4328). V2-screen
+    units may show no display under Linux yet.
+  - The /KERNEL file used by SM8550+ devices is not used on the Odin; the
+    EFI folder on this SD card is the boot path.
