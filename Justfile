@@ -168,14 +168,18 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
 
     BUILDTMP=$(mktemp -p "${PWD}" -d -t _build-bib.XXXXXXXXXX)
 
-    # x86_64 qemu-user hosts need runc; crun trips a memfd bug there.
-    EXTRA_MOUNTS=()
-    if [ -d /etc/containers/containers.conf.d ]; then
-        EXTRA_MOUNTS+=("-v" "/etc/containers/containers.conf.d:/etc/containers/containers.conf.d:ro")
-    fi
-    if [ -f /tmp/armada-runc/runc-arm64 ]; then
-        EXTRA_MOUNTS+=("-v" "/tmp/armada-runc/runc-arm64:/usr/bin/runc:ro")
-    fi
+    # Run BIB on the host's NATIVE arch and cross-build via --target-arch arm64
+    # (in args above) + qemu binfmt. Running BIB as an emulated arm64 container
+    # on x86 forces its internal container runtime to run under qemu-user, which
+    # cannot emulate clone(CLONE_PARENT) (runc nsexec stage-1) or crun's memfd
+    # re-exec — a hard qemu-user limit, not a version/config issue. Native BIB
+    # does namespace setup natively; only the target image's userspace runs
+    # under qemu. On an aarch64 host this is arm64 either way.
+    case "$(uname -m)" in
+        aarch64) BIB_PLATFORM="linux/arm64" ;;
+        x86_64)  BIB_PLATFORM="linux/amd64" ;;
+        *)       BIB_PLATFORM="linux/$(uname -m)" ;;
+    esac
 
     # Ubuntu 24.04 AppArmor blocks mknod in nested crun.
     tty_args=()
@@ -189,14 +193,13 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
       --privileged \
       --pull=newer \
       --net=host \
-      --platform linux/arm64 \
+      --platform "${BIB_PLATFORM}" \
       --security-opt label=type:unconfined_t \
       --security-opt apparmor=unconfined \
       --cap-add=CAP_MKNOD \
       -v $(pwd)/${config}:/config.toml:ro \
       -v $BUILDTMP:/output \
       -v /var/lib/containers/storage:/var/lib/containers/storage \
-      "${EXTRA_MOUNTS[@]}" \
       "${bib_image}" \
       ${args} \
       "${target_image}:${tag}"
