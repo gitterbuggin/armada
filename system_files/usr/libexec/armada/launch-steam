@@ -82,7 +82,6 @@ for steamapps in "${steamapps_dirs[@]}"; do
 done
 
 touch "${steam_root}/.cef-enable-remote-debugging"
-/usr/libexec/armada/powerbuttond >/dev/null 2>&1 &
 cd "${steam_arm_dir}"
 exec "${steam_arm}" \
     "${steam_args[@]}" \
