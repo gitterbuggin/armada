@@ -9,7 +9,13 @@ FEDORA_IMAGE="${FEDORA_IMAGE:-quay.io/fedora/fedora:44}"
 [[ -f "${RAW_IMAGE}" ]] || { echo "ERROR: raw image not found: ${RAW_IMAGE}" >&2; exit 1; }
 [[ -s "${REFS_FILE}" ]] || { echo "No Flatpak refs to preseed: ${REFS_FILE}"; exit 0; }
 
-WORK=$(mktemp -d)
+# The flatpak copy below is multi-GB. Default scratch to a disk-backed dir next
+# to the image rather than mktemp's default of /tmp, which is a tmpfs (RAM) on
+# systemd distros and overflows well before the disk does. Override with
+# ARMADA_SCRATCH (or TMPDIR, which mktemp -p ignores, so honor it explicitly).
+SCRATCH_BASE="${ARMADA_SCRATCH:-${TMPDIR:-$(dirname "${RAW_IMAGE}")}}"
+mkdir -p "${SCRATCH_BASE}"
+WORK=$(mktemp -d -p "${SCRATCH_BASE}")
 LOOP=""
 trap 'sudo umount "${WORK}/root" 2>/dev/null || true; if [[ -n "${LOOP}" ]]; then sudo losetup -d "${LOOP}" 2>/dev/null || true; fi; rm -rf "${WORK}"' EXIT
 
