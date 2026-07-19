@@ -6,7 +6,19 @@ set -euo pipefail
 name="${1:?usage: touchscreen-inhibit <device-name> <1|0>}"
 state="${2:?usage: touchscreen-inhibit <device-name> <1|0>}"
 
+found=0
 for dev in /sys/class/input/input*/; do
     [[ "$(cat "${dev}name" 2>/dev/null)" == "${name}" ]] || continue
-    echo "${state}" > "${dev}inhibited"
+    found=1
+    if ! echo "${state}" > "${dev}inhibited"; then
+        systemd-cat -t armada-touchscreen-inhibit -p warning \
+            <<<"failed to set ${name} inhibited=${state}" 2>/dev/null || true
+        exit 1
+    fi
 done
+
+if (( ! found )); then
+    systemd-cat -t armada-touchscreen-inhibit -p warning \
+        <<<"input device not found: ${name}" 2>/dev/null || true
+    exit 1
+fi

@@ -59,11 +59,15 @@ def input_devices():
 
 
 def pin_touchscreen(name, connector, devices):
+    if not name:
+        return True
     if name not in devices:
-        return
+        print(f"setup-dual-screen: input device not found: {name}",
+              file=sys.stderr)
+        return False
     vendor, product, event = devices[name]
     # Persisted mapping, applied by KWin when the device is added.
-    subprocess.run(
+    persisted = subprocess.run(
         ["kwriteconfig6", "--file", "kcminputrc",
          "--group", "Libinput", "--group", str(vendor),
          "--group", str(product), "--group", name,
@@ -71,13 +75,14 @@ def pin_touchscreen(name, connector, devices):
         check=False,
     )
     # Live mapping for the current session.
-    subprocess.run(
+    live = subprocess.run(
         ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
          "--object-path", f"/org/kde/KWin/InputDevice/{event}",
          "--method", "org.freedesktop.DBus.Properties.Set",
          "org.kde.KWin.InputDevice", "outputName", f"<'{connector}'>"],
         check=False, capture_output=True,
     )
+    return persisted.returncode == 0 and live.returncode == 0
 
 
 def main():
@@ -115,9 +120,11 @@ def main():
     )
 
     devices = input_devices()
-    pin_touchscreen(env.get("ARMADA_PRIMARY_TOUCHSCREEN"), primary, devices)
-    pin_touchscreen(env.get("ARMADA_SECONDARY_TOUCHSCREEN"), secondary, devices)
-    return 0
+    primary_ok = pin_touchscreen(
+        env.get("ARMADA_PRIMARY_TOUCHSCREEN"), primary, devices)
+    secondary_ok = pin_touchscreen(
+        env.get("ARMADA_SECONDARY_TOUCHSCREEN"), secondary, devices)
+    return 0 if primary_ok and secondary_ok else 1
 
 
 if __name__ == "__main__":
