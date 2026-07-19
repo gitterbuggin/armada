@@ -15,6 +15,8 @@ FEDORA_IMAGE="${FEDORA_IMAGE:-quay.io/fedora/fedora:44}"
 # ARMADA_SCRATCH (or TMPDIR, which mktemp -p ignores, so honor it explicitly).
 SCRATCH_BASE="${ARMADA_SCRATCH:-${TMPDIR:-$(dirname "${RAW_IMAGE}")}}"
 mkdir -p "${SCRATCH_BASE}"
+# Absolute path required: podman treats a relative -v source as a named volume.
+SCRATCH_BASE="$(cd "${SCRATCH_BASE}" && pwd)"
 WORK=$(mktemp -d -p "${SCRATCH_BASE}")
 LOOP=""
 trap 'sudo umount "${WORK}/root" 2>/dev/null || true; if [[ -n "${LOOP}" ]]; then sudo losetup -d "${LOOP}" 2>/dev/null || true; fi; rm -rf "${WORK}"' EXIT
