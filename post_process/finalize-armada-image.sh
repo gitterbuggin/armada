@@ -75,6 +75,30 @@ if [[ "${ARMADA_VARIANT}" == odin ]]; then
         sudo mkdir -p "${WORK}/mnt/dtb/qcom"
         sudo cp "${src}" "${WORK}/mnt/dtb/qcom/"
     done
+
+    # Force the kernel to use ITS OWN full DTB rather than the minimal one U-Boot
+    # passes over EFI. U-Boot's DTB lacks the panel/gamepad/audio nodes (and can
+    # differ enough to hang early boot), so add a `devicetree` key to each BLS
+    # entry pointing at the DTB deployed next to the kernel. GRUB reads these
+    # paths relative to the boot partition it already loads the kernel from.
+    # NOTE: ostree regenerates BLS entries on `bootc upgrade`, so this covers the
+    # initial deployment; a persistent mechanism is a follow-up.
+    ODIN_DTB="${ARMADA_ODIN_DTB:-sdm845-ayn-odin}"
+    for conf in "${WORK}/p2mnt"/loader*/entries/*.conf; do
+        sudo test -f "${conf}" || continue
+        linux_line=$(sudo sed -n 's/^linux //p' "${conf}" | head -1)
+        [ -n "${linux_line}" ] || continue
+        dtb_rel="$(dirname "${linux_line}")/dtb/qcom/${ODIN_DTB}.dtb"
+        sudo test -f "${WORK}/p2mnt/${dtb_rel}" \
+            || { echo "ERROR: BLS devicetree target missing on boot fs: ${dtb_rel}"; sudo umount "${WORK}/p2mnt"; exit 1; }
+        if sudo grep -q '^devicetree ' "${conf}"; then
+            sudo sed -i "s|^devicetree .*|devicetree ${dtb_rel}|" "${conf}"
+        else
+            echo "devicetree ${dtb_rel}" | sudo tee -a "${conf}" >/dev/null
+        fi
+        echo "Set 'devicetree ${dtb_rel}' in $(basename "${conf}")"
+    done
+
     sudo umount "${WORK}/p2mnt"
     # EFI stays enabled: U-Boot's UEFI loads GRUB from this ESP.
 else
