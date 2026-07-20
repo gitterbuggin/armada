@@ -19,6 +19,6 @@ key 547   DPAD_RIGHT
 axis 0x00 X
 axis 0x01 Y
 axis 0x02 LTRIGGER
-axis 0x03 RX
-axis 0x04 RY
+axis 0x03 Z
+axis 0x04 RZ
 axis 0x05 RTRIGGER
