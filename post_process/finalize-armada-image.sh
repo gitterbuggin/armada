@@ -99,6 +99,11 @@ if [[ "${ARMADA_VARIANT}" == odin ]]; then
         echo "Set 'devicetree ${dtb_rel}' in $(basename "${conf}")"
     done
 
+    # Register the real qcom UART console: ttyS0 doesn't exist on sdm845, and
+    # having the UART console active is the known workaround for the sdm845
+    # display-init race (panel comes up reliably with it enabled).
+    sudo sed -i 's/console=ttyS0/console=ttyMSM0,115200/' "${WORK}/p2mnt"/loader*/entries/*.conf
+
     sudo umount "${WORK}/p2mnt"
     # EFI stays enabled: U-Boot's UEFI loads GRUB from this ESP.
 else
