@@ -36,6 +36,7 @@ systemctl enable armada-fixups.service
 systemctl enable rmtfs.service
 systemctl enable tqftpserv.service
 systemctl enable odin-modem-start.service
+systemctl enable armada-audio-awake.service
 systemctl enable armada-installer-visibility.service
 systemctl enable armada-steamapps.service
 systemctl enable armada-powerd.service

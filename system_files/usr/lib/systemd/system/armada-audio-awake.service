@@ -1,0 +1,16 @@
+[Unit]
+Description=Pin SDM845 audio path awake
+# Only on SDM845 devices (AYN Odin): the WSA881x speaker amps fail to
+# re-enumerate on the soundwire bus after runtime suspend behind the
+# SLIMbus NGD, leaving audio dead until reboot. Keep the path awake.
+ConditionPathExists=/sys/bus/platform/devices/171c0000.slim-ngd
+After=multi-user.target sound.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/sleep 8
+ExecStart=/bin/sh -c 'for d in /sys/bus/soundwire/devices/*/power/control /sys/bus/slimbus/devices/*/power/control /sys/devices/platform/soc*/171c0000.slim-ngd/power/control; do [ -f "$d" ] && echo on > "$d"; done'
+
+[Install]
+WantedBy=multi-user.target
