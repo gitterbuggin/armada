@@ -1,0 +1,112 @@
+---
+# Forgejo port of .github/workflows/build-disk-odin.yml.
+#
+# Runs on the `host-arm64` label — directly in the runner VM, not in a job
+# container — because bootc-image-builder needs loop devices and privileged
+# podman, which are painless on the host and fiddly under docker-in-docker.
+#
+# VM prerequisites (one-time):
+#   sudo apt-get install -y containernetworking-plugins curl git jq just \
+#     pigz podman python3 zstd
+#
+# Default source image is the one build.yml pushes from the sdm845-odin
+# branch: forgejo.example.invalid/<owner>/armada:odin
+name: Build Odin disk image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Odin bootc image ref (blank = <forgejo>/<owner>/armada:odin)"
+        type: string
+        default: ""
+
+env:
+  BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:latest"
+  REGISTRY: forgejo.example.invalid
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Odin disk image
+    runs-on: host-arm64
+
+    steps:
+      - name: Checkout armada
+        uses: actions/checkout@v4
+
+      - name: Checkout armada-packages (for uboot-odin)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/armada-packages
+          ref: sdm845-odin
+          path: _armada-packages
+          token: ${{ secrets.REPO_TOKEN || github.token }}
+
+      - name: Check dependencies
+        run: |
+          set -euxo pipefail
+          for t in curl git jq just pigz podman python3 zstd; do
+            command -v "$t" >/dev/null || { echo "::error::missing '$t' — install the VM prereqs (see workflow header)"; exit 1; }
+          done
+
+      - name: Allow insecure LAN registry
+        run: |
+          sudo mkdir -p /etc/containers/registries.conf.d
+          printf '[[registry]]\nlocation = "%s"\ninsecure = true\n' "${REGISTRY}" \
+            | sudo tee /etc/containers/registries.conf.d/50-forgejo.conf
+
+      - name: Build U-Boot (uboot-odin)
+        run: |
+          set -euxo pipefail
+          # Native arm64 host — build.sh runs in a native aarch64 container.
+          (cd _armada-packages/uboot-odin && ./build.sh)
+          ls -lh _armada-packages/uboot-odin/out/
+
+      - name: Log in to Forgejo registry
+        run: |
+          echo "${{ secrets.REPO_TOKEN || github.token }}" | sudo podman login --tls-verify=false -u "${{ github.actor }}" --password-stdin "${REGISTRY}"
+
+      - name: Build Odin disk image
+        env:
+          UBOOT_DIR: ${{ github.workspace }}/_armada-packages/uboot-odin/out
+        run: |
+          set -euxo pipefail
+          JUST_BIN=$(command -v just)
+          sudo git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+          REF="${{ inputs.image }}"
+          if [[ -z "${REF}" ]]; then
+            OWNER="${{ github.repository_owner }}"
+            REF="${REGISTRY}/${OWNER}/armada:odin"
+          fi
+          IMG_REPO="${REF%:*}"
+          IMG_TAG="${REF##*:}"
+          echo "Building Odin disk from ${IMG_REPO}:${IMG_TAG}"
+
+          # Pre-pull into root storage so bootc-image-builder finds it locally.
+          sudo podman pull --tls-verify=false "${REF}"
+
+          # UBOOT_DIR must survive sudo (finalize defaults it under $HOME).
+          sudo --preserve-env=UBOOT_DIR,BIB_IMAGE \
+            "${JUST_BIN}" build-armada-image-odin "${IMG_REPO}" "${IMG_TAG}"
+
+          sudo chown -R "$(id -u):$(id -g)" output
+          IMG=$(find output -maxdepth 1 -name 'armada-odin-*.img.gz' -type f -print -quit)
+          sha256sum "${IMG}" > "${IMG}.sha256"
+          ls -lh "${IMG}" "${IMG}.sha256"
+
+      - name: Upload disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-odin-disk-image
+          path: |
+            output/armada-odin-*.img.gz
+            output/armada-odin-*.img.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: true

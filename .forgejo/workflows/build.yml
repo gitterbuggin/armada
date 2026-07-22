@@ -1,0 +1,88 @@
+---
+# Forgejo port of .github/workflows/build.yml.
+#
+# Builds the bootc container image and pushes it to the LAN Forgejo registry
+# (plain http, hence --tls-verify=false). Branch → tag mapping:
+#   main        → forgejo.example.invalid/<owner>/armada:testing
+#   sdm845-odin → forgejo.example.invalid/<owner>/armada:odin
+#
+# The odin build swaps the ISA-sensitive package carriers (built A78 on ghcr)
+# for the Forgejo-built A75 ones, plus the branch-only kernel/tqftpserv.
+# Run the armada-packages workflows on sdm845-odin at least once first, or
+# those :latest pulls will fail.
+#
+# Dropped vs the GitHub workflow: rechunk (OTA delta optimization — not needed
+# for bring-up validation), cosign signing (LAN registry), runner disk scrub.
+name: Build container image
+on:
+  push:
+    branches: [main, sdm845-odin]
+    paths-ignore:
+      - '**/README.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build_push:
+    name: Build and push image
+    runs-on: ubuntu-24.04-arm
+    env:
+      REGISTRY: forgejo.example.invalid
+      IMAGE: forgejo.example.invalid/${{ github.repository_owner }}/armada
+      PKGS: forgejo.example.invalid/${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Container tools
+        run: |
+          set -euxo pipefail
+          need=""
+          for t in buildah podman skopeo; do
+            command -v "$t" >/dev/null || need="$need $t"
+          done
+          [ -z "$need" ] || { sudo apt-get update && sudo apt-get install -y $need; }
+
+      - name: Allow insecure LAN registry
+        run: |
+          sudo mkdir -p /etc/containers/registries.conf.d
+          printf '[[registry]]\nlocation = "%s"\ninsecure = true\n' "${REGISTRY}" \
+            | sudo tee /etc/containers/registries.conf.d/50-forgejo.conf
+
+      - name: Get image version
+        id: version
+        run: echo "version=$(date +%Y%m%d).$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          set -euxo pipefail
+          TAG=testing
+          [ "${GITHUB_REF_NAME}" = "sdm845-odin" ] && TAG=odin
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+
+          ARGS=""
+          if [ "${TAG}" = odin ]; then
+            # A75-safe rebuilds + branch-only packages from the Forgejo registry
+            for a in KERNEL_PKG=armada-packages-kernel \
+                     TQFTPSERV_PKG=armada-packages-tqftpserv \
+                     FEX_PKG=armada-packages-fex \
+                     MESA_PKG=armada-packages-mesa \
+                     GAMESCOPE_PKG=armada-packages-gamescope \
+                     MANGOHUD_PKG=armada-packages-mangohud; do
+              ARGS="${ARGS} --build-arg ${a%%=*}=${PKGS}/${a##*=}:latest"
+            done
+          fi
+
+          buildah build ${ARGS} \
+            --build-arg ARMADA_VERSION=${{ steps.version.outputs.version }} \
+            -f Containerfile -t "armada:${TAG}" .
+
+      - name: Push
+        run: |
+          set -euxo pipefail
+          echo "${{ secrets.REPO_TOKEN || github.token }}" | buildah login --tls-verify=false -u "${{ github.actor }}" --password-stdin "${REGISTRY}"
+          buildah tag "armada:${TAG}" "${IMAGE}:${TAG}"
+          buildah push --tls-verify=false "${IMAGE}:${TAG}"
+          echo "### pushed ${IMAGE}:${TAG}" >> "$GITHUB_STEP_SUMMARY"
