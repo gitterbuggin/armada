@@ -1,0 +1,12 @@
+[Unit]
+Description=Qualcomm TFTP-over-QRTR firmware server
+# Only on SDM845 devices (AYN Odin): the modem DSP fetches wlanmdsp.mbn here
+ConditionPathExists=/sys/bus/platform/devices/4080000.remoteproc
+
+[Service]
+ExecStart=/usr/bin/tqftpserv
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

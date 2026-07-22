@@ -1,0 +1,14 @@
+[Unit]
+Description=Start the SDM845 modem remoteproc (hosts WLAN firmware)
+ConditionPathExists=/sys/bus/platform/devices/4080000.remoteproc
+After=rmtfs.service tqftpserv.service
+Requires=rmtfs.service tqftpserv.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 2
+ExecStart=/bin/sh -c 'for d in /sys/class/remoteproc/remoteproc*; do if grep -q 4080000 "$d/name" && ! grep -q running "$d/state"; then echo start > "$d/state"; fi; done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

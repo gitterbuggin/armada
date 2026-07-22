@@ -16,6 +16,8 @@ dnf5 -y install --setopt=install_weak_deps=False \
     alsa-ucm \
     alsa-utils \
     qcom-firmware \
+    rmtfs \
+    qrtr \
     atheros-firmware \
     NetworkManager \
     NetworkManager-wifi \

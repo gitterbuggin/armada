@@ -3,6 +3,8 @@ set -euxo pipefail
 
 cp -a /ctx/system_files/. /
 install -Dpm 0755 /packages/extest/libextest.so /usr/lib/extest/libextest.so
+# SDM845 (AYN Odin) modem firmware server — WLAN fw lives on the modem DSP
+install -Dpm 0755 /packages/tqftpserv/tqftpserv /usr/bin/tqftpserv
 
 # mkbootimg must be present for on-device /KERNEL rebuilds after OTA.
 install -Dpm 0755 /ctx/build_files/vendor/mkbootimg/mkbootimg.py /usr/libexec/armada/mkbootimg.py
@@ -30,6 +32,10 @@ systemctl enable armada-controller-type.service
 systemctl enable inputplumber.service
 systemctl enable armada-device-quirks.service
 systemctl enable armada-fixups.service
+# SDM845/Odin Wi-Fi chain (units are ConditionPathExists-gated to sdm845)
+systemctl enable rmtfs.service
+systemctl enable tqftpserv.service
+systemctl enable odin-modem-start.service
 systemctl enable armada-installer-visibility.service
 systemctl enable armada-steamapps.service
 systemctl enable armada-powerd.service

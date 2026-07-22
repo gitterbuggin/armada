@@ -1,0 +1,12 @@
+[Unit]
+Description=Qualcomm remote filesystem service
+# Only on SDM845 devices (AYN Odin): serves the modem's storage partitions
+ConditionPathExists=/sys/bus/platform/devices/4080000.remoteproc
+
+[Service]
+ExecStart=/usr/bin/rmtfs -r -P -s
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
