@@ -29,6 +29,10 @@ jobs:
   build_push:
     name: Build and push image
     runs-on: ubuntu-24.04-arm
+    # The runner's default job image is act-22.04 (jammy), whose buildah 1.23
+    # can't do `RUN --mount=type=bind,from=<stage>` ("invalid mount type
+    # bind"). Noble's buildah 1.33 can.
+    container: ghcr.io/catthehacker/ubuntu:act-24.04
     env:
       REGISTRY: forgejo.example.invalid
       IMAGE: forgejo.example.invalid/${{ github.repository_owner }}/armada
