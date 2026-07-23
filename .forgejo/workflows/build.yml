@@ -44,10 +44,14 @@ jobs:
         run: |
           set -euxo pipefail
           need=""
-          for t in buildah podman skopeo; do
+          for t in buildah podman skopeo fuse-overlayfs; do
             command -v "$t" >/dev/null || need="$need $t"
           done
           [ -z "$need" ] || { sudo apt-get update && sudo apt-get install -y $need; }
+          # vfs means fuse-overlayfs couldn't engage (no /dev/fuse in the job
+          # container) and disk use will balloon to several times the image size.
+          df -h /
+          buildah info --format '{{.store.GraphDriverName}}'
 
       - name: Allow insecure LAN registry
         run: |
