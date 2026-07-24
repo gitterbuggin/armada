@@ -23,7 +23,9 @@ sed -i '$r /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/arma
 find /etc/NetworkManager/system-connections -name '*.nmconnection' -exec chmod 0600 {} + -exec chown root:root {} + 2>/dev/null || true
 
 systemctl disable getty@tty1.service || true
-systemctl disable sshd.service || true
+# Bring-up default for the sdm845-odin branch: keep sshd on so every fresh
+# flash is reachable over the LAN. Revert to disabled before any public image.
+systemctl enable sshd.service
 systemctl enable sddm.service
 systemctl enable armada-session-default.service
 systemctl enable seatd.service
