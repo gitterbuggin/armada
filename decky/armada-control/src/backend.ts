@@ -1,5 +1,5 @@
 import { call } from "@decky/api";
-import type { CalibrationState, Capture, Config, InstalledGame, PowerConfig, Tweaks } from "./types";
+import type { CalibrationState, Capture, Config, InstalledGame, LedState, PowerConfig, Tweaks } from "./types";
 
 export const getConfig = () => call<[], Config>("get_config");
 export const getInstalledGames = () => call<[], InstalledGame[]>("get_installed_games");
@@ -16,6 +16,8 @@ export const saveCompatApplied = (appids: string[]) => {
   return request;
 };
 export const setSshEnabled = (enabled: boolean) => call<[boolean], boolean>("set_ssh_enabled", enabled);
+export const setLeds = (settings: { sides?: boolean; sticks?: boolean }) =>
+  call<[{ sides?: boolean; sticks?: boolean }], LedState>("set_leds", settings);
 export const setControllerType = (value: string) => call<[string], string>("set_controller_type", value);
 export const getControllerState = () => call<[], CalibrationState>("get_controller_state");
 export const saveCalibration = (capture: Capture) => call<[Capture], CalibrationState>("save_calibration", capture);

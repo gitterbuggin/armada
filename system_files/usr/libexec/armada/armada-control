@@ -18,6 +18,14 @@ CONFIG_PATHS = {
     "calibration": Path("/etc/armada/input-calibration.json"),
     "compat-applied": Path("/var/lib/armada/compat-applied.json"),
 }
+LEDS_CONFIG = Path("/etc/armada/leds.json")
+# AYN Odin (SDM845) decorative LEDs. Per the pmOS port, the side bars are
+# active-high but the joystick rings are active-LOW (0 = lit).
+LED_GROUPS = {
+    "sides": {"leds": ("blue:backlight-1", "blue:backlight-2"), "on": "1", "off": "0"},
+    "sticks": {"leds": ("blue:backlight-3", "blue:backlight-4"), "on": "0", "off": "1"},
+}
+LED_SYSFS = Path("/sys/class/leds")
 CALIBRATION_PARAMS = (
     "axis_leftx_min",
     "axis_leftx_center",
@@ -130,6 +138,60 @@ def action_inputplumber_intercept(request):
     return {"ok": True}
 
 
+def led_group_available(group):
+    return all((LED_SYSFS / name / "brightness").exists() for name in LED_GROUPS[group]["leds"])
+
+
+def led_state():
+    state = {}
+    for group, spec in LED_GROUPS.items():
+        if not led_group_available(group):
+            state[group] = {"available": False, "on": False}
+            continue
+        raw = (LED_SYSFS / spec["leds"][0] / "brightness").read_text().strip()
+        state[group] = {"available": True, "on": raw == spec["on"]}
+    return state
+
+
+def apply_leds(settings):
+    for group, spec in LED_GROUPS.items():
+        want = settings.get(group)
+        if want is None or not led_group_available(group):
+            continue
+        value = spec["on"] if want else spec["off"]
+        for name in spec["leds"]:
+            (LED_SYSFS / name / "brightness").write_text(value, encoding="utf-8")
+
+
+def action_set_leds(request):
+    settings = {}
+    for group in LED_GROUPS:
+        if group in request:
+            settings[group] = bool(request[group])
+    if not settings:
+        raise ValueError("no led group given")
+    apply_leds(settings)
+    # Persist the merged state so it survives reboots.
+    current = {group: state["on"] for group, state in led_state().items() if state["available"]}
+    atomic_write(LEDS_CONFIG, json.dumps(current, indent=2, sort_keys=True) + "\n")
+    return {"leds": led_state()}
+
+
+def action_get_leds(request):
+    return {"leds": led_state()}
+
+
+def restore_leds():
+    # Best-effort boot restore of the persisted LED preferences.
+    try:
+        with LEDS_CONFIG.open(encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, dict):
+            apply_leds({k: bool(v) for k, v in saved.items() if k in LED_GROUPS})
+    except (OSError, ValueError):
+        pass
+
+
 def action_write_config(request):
     name = str(request.get("name", ""))
     text = request.get("text")
@@ -156,8 +218,10 @@ ACTIONS = {
     "set_controller_type": action_set_controller_type,
     "get_controller_type": action_get_controller_type,
     "get_device_env": action_get_device_env,
+    "get_leds": action_get_leds,
     "get_ssh_enabled": action_get_ssh_enabled,
     "inputplumber_intercept": action_inputplumber_intercept,
+    "set_leds": action_set_leds,
     "set_ssh_enabled": action_set_ssh_enabled,
     "write_config": action_write_config,
 }
@@ -193,6 +257,7 @@ def serve_client(conn):
 
 
 def main():
+    restore_leds()
     SOCKET.parent.mkdir(parents=True, exist_ok=True)
     try:
         SOCKET.unlink()

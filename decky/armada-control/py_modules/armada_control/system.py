@@ -72,3 +72,24 @@ def read_text(path):
 
 def set_ssh_enabled(enabled):
     return bool(call("set_ssh_enabled", enabled=bool(enabled)).get("enabled"))
+
+
+LED_UNAVAILABLE = {
+    "sides": {"available": False, "on": False},
+    "sticks": {"available": False, "on": False},
+}
+
+
+def led_state():
+    try:
+        leds = call("get_leds").get("leds")
+        if isinstance(leds, dict):
+            return leds
+    except Exception:
+        pass
+    return dict(LED_UNAVAILABLE)
+
+
+def set_leds(settings):
+    payload = {k: bool(v) for k, v in settings.items() if k in ("sides", "sticks")}
+    return call("set_leds", **payload).get("leds", dict(LED_UNAVAILABLE))

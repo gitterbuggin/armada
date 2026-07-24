@@ -70,6 +70,16 @@ export interface GameRef {
   name: string;
 }
 
+export interface LedGroupState {
+  available: boolean;
+  on: boolean;
+}
+
+export interface LedState {
+  sides: LedGroupState;
+  sticks: LedGroupState;
+}
+
 export interface Config {
   power: PowerConfig;
   powerDefaults: PowerConfig;
@@ -79,6 +89,7 @@ export interface Config {
   cpuDeviceClass: string;
   osVersion: string;
   sshEnabled: boolean;
+  leds?: LedState;
   controllerType: string;
   controllerTypes: DropdownChoice[];
   calibration?: CalibrationState;
