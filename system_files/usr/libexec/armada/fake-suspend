@@ -121,7 +121,6 @@ resume_runtime_pm() {
 }
 
 # The power key is left ungrabbed by block_input; wait_for_wake grabs it instead.
-INPUT_WHITELIST='pmic_pwrkey'
 
 power_device() {
     local dev name
@@ -134,13 +133,17 @@ power_device() {
 }
 
 block_input() {
-    local dev name
+    local dev pdev
+    # Skip exactly the device wait_for_wake will grab — a separate name
+    # whitelist here drifted from power_device's matcher (pmic_pwrkey vs
+    # pm8941_pwrkey), leaving the power key exclusively grabbed and the
+    # wake-waiter starved: fake suspend then never woke.
+    pdev="$(power_device || true)"
     for dev in /dev/input/event*; do
         [[ -e "$dev" ]] || continue
+        [[ "$dev" == "$pdev" ]] && continue
         # Never grab the lid switch — logind/resume need its events to flow.
         armada_dev_has_lid "$dev" && continue
-        name="$(cat "/sys/class/input/$(basename "$dev")/device/name" 2>/dev/null)" || continue
-        echo "$name" | grep -qE "^(${INPUT_WHITELIST})$" && continue
         evtest --grab "$dev" >/dev/null 2>&1 &
     done
 }
