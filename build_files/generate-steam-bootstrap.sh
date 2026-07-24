@@ -9,7 +9,9 @@ fi
 STEAM_BOOTSTRAP_HOME="${STEAM_BOOTSTRAP_HOME:-/var/lib/armada/steam-bootstrap-home}"
 STEAM="${STEAM_BOOTSTRAP_HOME}/.local/share/Steam"
 DOT_STEAM="${STEAM_BOOTSTRAP_HOME}/.steam"
-STEAM_ARM_RUNTIME_URL="https://repo.steampowered.com/steamrt3c/images/latest-public-beta/steam-runtime-steamrt-arm64.tar.xz"
+# Valve's latest-public-beta/ alias directory intermittently 403s; the .txt
+# pointer stays valid, so resolve it to the dated snapshot at fetch time.
+STEAM_ARM_RUNTIME_BASE="https://repo.steampowered.com/steamrt3c/images"
 STEAM_ARM_CHANNEL="steamdeck_publicbeta"
 STEAM_ARM_CDN="https://client-update.steamstatic.com"
 STEAM_ARM_MANIFEST_NAME="steam_client_${STEAM_ARM_CHANNEL}_linuxarm64"
@@ -81,7 +83,9 @@ for name in names:
     os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 PY
 
-curl -fsSL -o /tmp/steam-runtime-steamrt-arm64.tar.xz "${STEAM_ARM_RUNTIME_URL}"
+rt_snapshot="$(curl -fsSL "${STEAM_ARM_RUNTIME_BASE}/latest-public-beta.txt" | tr -d '[:space:]')"
+curl -fsSL -o /tmp/steam-runtime-steamrt-arm64.tar.xz \
+    "${STEAM_ARM_RUNTIME_BASE}/${rt_snapshot}/steam-runtime-steamrt-arm64.tar.xz"
 tar -xJf /tmp/steam-runtime-steamrt-arm64.tar.xz -C "${STEAM}"
 rm -f /tmp/steam-runtime-steamrt-arm64.tar.xz
 
