@@ -98,12 +98,15 @@ mapping:
     target_event:
       gamepad: {button: DPadRight}
 
+  # Triggers are a Gamepad:Trigger capability, not an axis — declaring them
+  # as axis:{name: LeftTrigger} resolved to no capability and inputplumber
+  # silently dropped the mapping (dead triggers with a clean journal).
   - name: Left Trigger
     source_events:
       - evdev: {event_type: ABS, event_code: ABS_Z, value_type: trigger}
     target_event:
       gamepad:
-        axis:
+        trigger:
           name: LeftTrigger
 
   - name: Right Trigger
@@ -111,7 +114,7 @@ mapping:
       - evdev: {event_type: ABS, event_code: ABS_RZ, value_type: trigger}
     target_event:
       gamepad:
-        axis:
+        trigger:
           name: RightTrigger
 
   - name: Left Stick
