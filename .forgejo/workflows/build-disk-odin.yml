@@ -10,6 +10,10 @@
 #     nodejs pigz podman python3 zstd
 # (nodejs: host-mode runs the JS actions — checkout/upload-artifact — on the
 # VM itself; docker-mode jobs get node from the act image.)
+# Ubuntu 24.04 also needs its AppArmor userns restriction disabled or
+# osbuild's nested mounts fail with EACCES despite --privileged:
+#   echo 'kernel.apparmor_restrict_unprivileged_userns=0' \
+#     | sudo tee /etc/sysctl.d/99-bib.conf && sudo sysctl --system
 #
 # Default source image is the one build.yml pushes from the sdm845-odin
 # branch: forgejo.example.invalid/<owner>/armada:odin
