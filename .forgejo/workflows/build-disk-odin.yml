@@ -7,7 +7,9 @@
 #
 # VM prerequisites (one-time):
 #   sudo apt-get install -y containernetworking-plugins curl git jq just \
-#     pigz podman python3 zstd
+#     nodejs pigz podman python3 zstd
+# (nodejs: host-mode runs the JS actions — checkout/upload-artifact — on the
+# VM itself; docker-mode jobs get node from the act image.)
 #
 # Default source image is the one build.yml pushes from the sdm845-odin
 # branch: forgejo.example.invalid/<owner>/armada:odin
@@ -49,7 +51,7 @@ jobs:
       - name: Check dependencies
         run: |
           set -euxo pipefail
-          for t in curl git jq just pigz podman python3 zstd; do
+          for t in curl git jq just node pigz podman python3 zstd; do
             command -v "$t" >/dev/null || { echo "::error::missing '$t' — install the VM prereqs (see workflow header)"; exit 1; }
           done
 
