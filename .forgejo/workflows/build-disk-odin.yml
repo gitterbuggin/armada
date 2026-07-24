@@ -10,10 +10,12 @@
 #     nodejs pigz podman python3 zstd
 # (nodejs: host-mode runs the JS actions — checkout/upload-artifact — on the
 # VM itself; docker-mode jobs get node from the act image.)
-# Ubuntu 24.04 also needs its AppArmor userns restriction disabled or
-# osbuild's nested mounts fail with EACCES despite --privileged:
-#   echo 'kernel.apparmor_restrict_unprivileged_userns=0' \
-#     | sudo tee /etc/sysctl.d/99-bib.conf && sudo sysctl --system
+# Ubuntu 24.04's AppArmor bwrap profile (unpriv_bwrap) strips setuid/
+# sys_admin from osbuild's sandboxes even under a privileged container —
+# nested mounts then fail with EACCES. Disable it once:
+#   sudo ln -sf /etc/apparmor.d/bwrap-userns-restrict /etc/apparmor.d/disable/
+#   sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
+# (kernel.apparmor_restrict_unprivileged_userns=0 alone is NOT sufficient.)
 #
 # Default source image is the one build.yml pushes from the sdm845-odin
 # branch: forgejo.example.invalid/<owner>/armada:odin
@@ -106,7 +108,9 @@ jobs:
           ls -lh "${IMG}" "${IMG}.sha256"
 
       - name: Upload disk image
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact@v4 refuses non-github.com servers
+        # (GHESNotSupportedError); use Forgejo's compatible fork.
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: armada-odin-disk-image
           path: |
