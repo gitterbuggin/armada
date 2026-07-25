@@ -28,6 +28,43 @@ RUN npm ci
 COPY decky/armada-control/ ./
 RUN npm run build
 
+# Decky Loader built from source: pinned (no more fetch-latest-at-build), a
+# native arm64 PluginLoader (no FEX emulation), and carrying the one-line
+# boot-gate fix the arm64 Steam client needs (App.BFinishedInitStageOne does
+# not exist there; unguarded call threw and Decky never drew its QAM tab).
+# Drop the patch once https://github.com/SteamDeckHomebrew/decky-loader gains
+# the guard upstream.
+ARG DECKY_LOADER_VERSION=v3.2.7-pre1
+FROM docker.io/library/node:22-slim AS decky-loader-frontend
+ARG DECKY_LOADER_VERSION
+ADD https://github.com/SteamDeckHomebrew/decky-loader/archive/refs/tags/${DECKY_LOADER_VERSION}.tar.gz /decky-src.tar.gz
+WORKDIR /src
+RUN tar xzf /decky-src.tar.gz --strip-components=1 && \
+    sed -i 's|while (!window.App?.BFinishedInitStageOne())|while (!(window.App?.BFinishedInitStageOne?.() ?? true))|' \
+        frontend/src/index.ts && \
+    grep -q 'BFinishedInitStageOne?.()' frontend/src/index.ts && \
+    npm i -g pnpm && \
+    cd frontend && \
+    pnpm i --frozen-lockfile --dangerously-allow-all-builds && \
+    pnpm run build
+    # frontend emits into ../backend/decky_loader/static (rollup outDir)
+
+FROM docker.io/library/python:3.11-slim AS decky-loader-build
+ARG DECKY_LOADER_VERSION
+COPY --from=decky-loader-frontend /src/backend /backend
+COPY --from=decky-loader-frontend /src/dist/plugin_loader-prerelease.service /backend/dist-extra/
+WORKDIR /backend
+RUN apt-get update && apt-get install -y --no-install-recommends binutils && rm -rf /var/lib/apt/lists/* && \
+    # tarball has no git metadata for poetry-dynamic-versioning; pin statically
+    sed -i 's/^version = "0.0.0".*/version = "3.2.7"/' pyproject.toml && \
+    sed -i 's/^enable = true/enable = false/' pyproject.toml && \
+    sed -i 's/build-backend = "poetry_dynamic_versioning.backend"/build-backend = "poetry.core.masonry.api"/' pyproject.toml && \
+    sed -i 's/requires = \["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"\]/requires = ["poetry-core>=1.0.0"]/' pyproject.toml && \
+    pip install --no-cache-dir ./ pyinstaller && \
+    pyinstaller pyinstaller.spec && \
+    printf '%s\n' "${DECKY_LOADER_VERSION}" > dist/.loader.version && \
+    cp dist-extra/plugin_loader-prerelease.service dist/
+
 FROM scratch AS ctx
 COPY build_files /build_files/
 COPY decky /decky/
@@ -49,6 +86,7 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=bind,from=extest,source=/,target=/packages/extest \
     --mount=type=bind,from=tqftpserv,source=/,target=/packages/tqftpserv \
     --mount=type=bind,from=decky-build,source=/build/dist,target=/packages/decky-dist \
+    --mount=type=bind,from=decky-loader-build,source=/backend/dist,target=/packages/decky-loader \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
