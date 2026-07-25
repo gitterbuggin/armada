@@ -9,6 +9,7 @@ ARG NETWORKMANAGER_PKG=ghcr.io/virtudude/armada-packages/networkmanager@sha256:e
 # No published digest yet — first build uses ARMADA_LOCAL_PKGS="... tqftpserv".
 ARG TQFTPSERV_PKG=ghcr.io/virtudude/armada-packages/tqftpserv:latest
 ARG JUPITER_HW_SUPPORT_PKG=ghcr.io/virtudude/armada-packages/jupiter-hw-support@sha256:3d555f9d9ac79e7fbca2e59a45df97782fb5bee7ce3f65613703122b93b8a866
+ARG DECKY_LOADER_VERSION=v3.2.7-pre1
 
 FROM ${FEX_PKG} AS fex
 FROM ${MESA_PKG} AS mesa
@@ -33,8 +34,7 @@ RUN npm run build
 # boot-gate fix the arm64 Steam client needs (App.BFinishedInitStageOne does
 # not exist there; unguarded call threw and Decky never drew its QAM tab).
 # Drop the patch once https://github.com/SteamDeckHomebrew/decky-loader gains
-# the guard upstream.
-ARG DECKY_LOADER_VERSION=v3.2.7-pre1
+# the guard upstream. (Version pin: DECKY_LOADER_VERSION arg at the top.)
 FROM docker.io/library/node:22-slim AS decky-loader-frontend
 ARG DECKY_LOADER_VERSION
 ADD https://github.com/SteamDeckHomebrew/decky-loader/archive/refs/tags/${DECKY_LOADER_VERSION}.tar.gz /decky-src.tar.gz
