@@ -36,6 +36,8 @@ dnf5 -y install --setopt=install_weak_deps=False \
     lsof \
     unzip \
     evtest \
+    libgpiod-utils \
+    i2c-tools \
     dbus-x11 \
     xdg-user-dirs \
     xdg-terminal-exec \
