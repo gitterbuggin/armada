@@ -98,6 +98,20 @@ mapping:
     target_event:
       gamepad: {button: DPadRight}
 
+  # Back buttons: M1 (left) -> L4, M2 (right) -> R4. The DT emits
+  # TRIGGER_HAPPY7/5 to match inputplumber's native paddle convention.
+  - name: Left Back Button (M1)
+    source_events:
+      - evdev: {event_type: KEY, event_code: BTN_TRIGGER_HAPPY7, value_type: button}
+    target_event:
+      gamepad: {button: LeftPaddle1}
+
+  - name: Right Back Button (M2)
+    source_events:
+      - evdev: {event_type: KEY, event_code: BTN_TRIGGER_HAPPY5, value_type: button}
+    target_event:
+      gamepad: {button: RightPaddle1}
+
   # Triggers are a Gamepad:Trigger capability, not an axis — declaring them
   # as axis:{name: LeftTrigger} resolved to no capability and inputplumber
   # silently dropped the mapping (dead triggers with a clean journal).
