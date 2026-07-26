@@ -3,10 +3,14 @@ match-architectures = ["aarch64"]
 kargs = [
     "rootwait",
     "rootflags=noatime,compress=zstd:1",
-    "console=tty0",
+    # No console=tty0: keep kernel printk off the display so Plymouth owns it.
+    # The kernel DT's stdout-path adds a ttyMSM0 serial console; without
+    # ignore-serial-consoles Plymouth treats that as the console and skips the
+    # graphical splash, dumping logs on tty0 instead. Serial still logs.
     "rhgb",
     "quiet",
     "plymouth.enable=1",
+    "plymouth.ignore-serial-consoles",
     "loglevel=3",
 
     "enforcing=0",

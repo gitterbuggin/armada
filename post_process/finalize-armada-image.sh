@@ -104,6 +104,15 @@ if [[ "${ARMADA_VARIANT}" == odin ]]; then
     # display-init race (panel comes up reliably with it enabled).
     sudo sed -i 's/console=ttyS0/console=ttyMSM0,115200/' "${WORK}/p2mnt"/loader*/entries/*.conf
 
+    # Quiet graphical boot: skip GRUB's menu (hidden + 0s) so it falls straight
+    # through to the default BLS entry and Plymouth. (Kernel-side Plymouth kargs
+    # live in kargs.d/10-armada.toml.)
+    GRUBCFG="${WORK}/p2mnt/grub2/grub.cfg"
+    if sudo test -f "${GRUBCFG}"; then
+        sudo sed -i 's/^set timeout_style=menu/set timeout_style=hidden/; s/^set timeout=[0-9][0-9]*/set timeout=0/' "${GRUBCFG}"
+        echo "Set GRUB timeout=0 / hidden in grub.cfg"
+    fi
+
     sudo umount "${WORK}/p2mnt"
     # EFI stays enabled: U-Boot's UEFI loads GRUB from this ESP.
 else
