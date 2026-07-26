@@ -33,6 +33,7 @@ dnf5 -y install --setopt=install_weak_deps=False \
     jq \
     htop \
     lsof \
+    scx-scheds \
     unzip \
     evtest \
     dbus-x11 \
