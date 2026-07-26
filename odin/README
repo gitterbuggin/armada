@@ -15,47 +15,72 @@ https://github.com/sigmaris/u-boot 'odin' branch):
 
 The Odin Lite is MediaTek-based and is NOT supported.
 
-One-time flash (needs a PC with fastboot, USB-C cable):
+Which install method applies depends on your ABL. Power off and hold
+VOL- (+ POWER) to reach the green START/fastboot screen and look for a
+`DEFAULT BOOT` line:
 
-1. Copy this folder's .img files to the PC.
+  - NO `DEFAULT BOOT` line  -> older ABL that chain-loads the boot slot;
+    use Method A (boot slot).
+  - `DEFAULT BOOT` present  -> AYN multiboot ABL that boots a `loader`
+    PARTITION, not the boot slot; use Method B (loader partition). This
+    is what current Odins ship with; Method A will NOT work on them (the
+    ABL never chain-loads boot_b in Custom mode -- it just drops to
+    fastboot).
 
-2. Power off the Odin. Hold VOL- and plug in USB-C (or hold VOL- + POWER)
-   until the green START/fastboot screen appears.
-
-3. Find the active Android slot:
-
-     fastboot getvar current-slot
-
-   The commands below assume the answer was "a", so Linux goes to slot "b".
-   If it said "b", swap a and b throughout.
-
-4. Erase the dtbo of the Linux slot (Android would otherwise apply its
-   device tree overlays over U-Boot's device tree and break it):
-
-     fastboot erase dtbo_b
-
-5. Tethered test boot first (nothing is flashed yet; SD card inserted):
+Tethered test boot first (works on both; nothing flashed, SD inserted):
 
      fastboot boot uboot-ayn-odin.img
 
-   If U-Boot appears on screen and boots Armada from SD, make it permanent:
+If U-Boot appears and boots Armada from SD, make it permanent per your ABL:
 
-     fastboot flash boot_b uboot-ayn-odin.img
+Method A -- older ABL, boot-slot chainload:
+
+  1. fastboot getvar current-slot   (assume "a"; Linux -> slot "b")
+  2. fastboot erase dtbo_b          (else Android's dtbo overlays break
+                                     U-Boot's device tree)
+  3. fastboot flash boot_b uboot-ayn-odin.img
      fastboot --set-active=b
      fastboot reboot
 
+Method B -- AYN multiboot ABL (`DEFAULT BOOT` present), loader partition:
+
+  The ABL boots a `loader` partition when DEFAULT BOOT = Custom. Stock
+  layout has none, so we repartition to add it (this WIPES internal
+  Android incl. persist; Armada on the SD is untouched). Uses Project
+  Valhalla's odin_custom_boot package (github.com/ProjectValhalla) for the
+  repartition GPT -- pick gpt0_64/128/256 by storage size:
+
+  1. fastboot getvar partition-size:userdata
+       0xB3B1F3000  -> 64GB  -> gpt0_64.bin
+       0x1A209F3000 -> 128GB -> gpt0_128.bin
+       0x37EB9F3000 -> 256GB -> gpt0_256.bin
+  2. fastboot flash partition:0 gpt0_<size>.bin   (creates loader/efi/rootfs)
+  3. fastboot flash loader uboot-ayn-odin.img     (our U-Boot IS the loader)
+  4. On the START screen, set DEFAULT BOOT = Custom via "Switch Default
+     Boot" (VOL to navigate, POWER to select) if not already.
+  5. Cold boot: power off, unplug USB, power on.
+
+  Notes: `fastboot getvar partition-size:loader` may report not-found even
+  when the flash succeeded (stale cache) -- trust the OKAY on `flash
+  loader`. If U-Boot is rejected from `loader`, flash Valhalla's
+  odin-loader-m0.img (a Qualcomm UEFI LinuxLoader) there instead and boot
+  Armada's GRUB from the `efi` ESP.
+
 Switching between Armada and Android:
 
-  Boot to fastboot and run `fastboot --set-active=a` (Android) or
-  `fastboot --set-active=b` (Armada). The Project Valhalla multiboot ABL
-  (github.com/ProjectValhalla) can also be used for an on-device menu.
+  Method A: boot to fastboot, `fastboot --set-active=a` (Android) or `=b`
+  (Armada).
+  Method B: on the START screen toggle DEFAULT BOOT between Custom (Armada)
+  and Android.
 
 Going back to stock:
 
-  Nothing on internal storage is modified except the Linux slot's boot and
-  dtbo partitions, which held only an inactive copy of Android's kernel.
-  `fastboot --set-active=a` restores Android; reflashing the stock boot/dtbo
-  images to slot b (from AYN's firmware packages) fully reverts it.
+  Method A: only the Linux slot's boot/dtbo were changed (inactive Android
+  kernel); `fastboot --set-active=a` restores Android, reflashing stock
+  boot/dtbo from AYN's firmware fully reverts it.
+  Method B: internal Android was repartitioned/wiped; restore with Valhalla's
+  restore_odin_m0.sh (flashes the stock gpt0.bin + system + persist) or
+  reflash AYN's full firmware package.
 
 Notes:
 
