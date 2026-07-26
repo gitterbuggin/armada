@@ -25,6 +25,16 @@ if [[ -n "${ARMADA_GAMESCOPE_FAKE_OUTPUT_MM:-}" ]]; then
     export GAMESCOPE_FAKE_OUTPUT_MM="$ARMADA_GAMESCOPE_FAKE_OUTPUT_MM"
 fi
 
+# HDR: Hand the device identity to gamescope so the panel's display profile
+# can match its EDID-less internal display, and let gamescope-session-plus
+# add the HDR options and client HDR env itself:
+# ENABLE_GAMESCOPE_HDR=1 == --hdr-enabled --hdr-itm-enable + ENABLE_HDR_WSI + DXVK_HDR)
+if [[ "${ARMADA_HDR_CAPABLE:-0}" == 1 ]]; then
+    export GAMESCOPE_INTERNAL_DEVICE_ID="$ARMADA_DEVICE_ID"
+    export ENABLE_GAMESCOPE_HDR=1
+    export GAMESCOPE_EXPOSE_CLIENT_SAMPLEABLE_FORMATS=1
+fi
+
 export STEAM_EXTRA_COMPAT_TOOLS_PATHS="/usr/share/steam/compatibilitytools.d:${HOME}/.local/share/Steam/compatibilitytools.d"
 
 CLIENTCMD='/usr/libexec/armada/launch-steam -gamepadui -steamos3 -steampal -steamdeck -noverifyfiles -noshaders'
