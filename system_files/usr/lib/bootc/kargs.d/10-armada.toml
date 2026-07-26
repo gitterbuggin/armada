@@ -8,8 +8,6 @@ kargs = [
     "quiet",
     "loglevel=3",
 
-    "enforcing=0",
-
     "allow_mismatched_32bit_el0",
     "fw_devlink.strict=1",
     "pcie_ports=compat",
