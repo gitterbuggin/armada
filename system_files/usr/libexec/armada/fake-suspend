@@ -82,15 +82,17 @@ resume_radios() {
     done < "$SAVE_DIR/radios"
 }
 
-# AYN Odin (SDM845) decorative side-bar (1/2) and joystick-ring (3/4) LEDs,
-# gpio-leds exposed as blue:backlight-1..4 (see armada-control LED_GROUPS). Kill
-# them while suspended so a "sleeping" Odin isn't glowing, then restore whatever
-# the user had (persisted prefs live in /etc/armada/leds.json). No-op elsewhere:
-# the glob matches nothing on devices without these LEDs.
+# AYN Odin (SDM845) LEDs: the decorative side-bar (1/2) and joystick-ring (3/4)
+# gpio-leds (blue:backlight-1..4, see armada-control LED_GROUPS), plus the green
+# power/charge indicator (green:*, PMI8998 LPG ch4). Kill them while suspended so
+# a "sleeping" Odin isn't glowing, then restore whatever they were (respects a
+# user who turned a group off; side/stick prefs persist in /etc/armada/leds.json).
+# No-op elsewhere: the globs match nothing on devices without these LEDs.
 suspend_leds() {
     : > "$SAVE_DIR/leds"
     local bright name previous
-    for bright in /sys/class/leds/blue:backlight-[1-4]/brightness; do
+    for bright in /sys/class/leds/blue:backlight-[1-4]/brightness \
+                  /sys/class/leds/green:*/brightness; do
         [[ -w "$bright" ]] || continue
         previous="$(cat "$bright" 2>/dev/null)" || continue
         printf '%s\t%s\n' "$bright" "$previous" >> "$SAVE_DIR/leds"
