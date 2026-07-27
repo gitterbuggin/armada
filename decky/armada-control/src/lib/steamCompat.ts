@@ -133,19 +133,20 @@ function requestAppDetails(appid: string): void {
 // Absolute path: launch options run via a shell without /usr/libexec on PATH.
 const LAUNCH_WRAPPER = "/usr/libexec/armada/armada-game-launch";
 const COMMAND_TOKEN = "%command%";
+const DEFAULT_LAUNCH_OPTIONS = `${LAUNCH_WRAPPER} ${COMMAND_TOKEN}`;
 
 // null when already wrapped (idempotent); preserves user options around %command%.
 export function wrapLaunchOptions(current: string): string | null {
   const opts = current || "";
   if (opts.includes(LAUNCH_WRAPPER)) return null;
   if (opts.includes(COMMAND_TOKEN)) {
-    return opts.replace(COMMAND_TOKEN, `${LAUNCH_WRAPPER} ${COMMAND_TOKEN}`);
+    return opts.replace(COMMAND_TOKEN, DEFAULT_LAUNCH_OPTIONS);
   }
   // No %command%: Steam appends bare options as args, so keep them after it.
   const trimmed = opts.trim();
   return trimmed
-    ? `${LAUNCH_WRAPPER} ${COMMAND_TOKEN} ${trimmed}`
-    : `${LAUNCH_WRAPPER} ${COMMAND_TOKEN}`;
+    ? `${DEFAULT_LAUNCH_OPTIONS} ${trimmed}`
+    : DEFAULT_LAUNCH_OPTIONS;
 }
 
 async function resolveDetails(appid: string, attempts = 5): Promise<any> {
@@ -303,11 +304,33 @@ export async function applyLaunchWrapperToGame(appid: string): Promise<boolean> 
   if (!details) return false;
   const next = wrapLaunchOptions(String(details.strLaunchOptions || ""));
   if (next === null) return true;
+  const store = apps();
+  if (!store?.SetAppLaunchOptions) return false;
   try {
-    await apps()?.SetAppLaunchOptions?.(Number(appid), next);
+    await store.SetAppLaunchOptions(Number(appid), next);
+    return true;
   } catch (error) {
+    return false;
   }
-  return true;
+}
+
+export async function resetLaunchOptionsForGame(appid: string, attempts = 3): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const type = await resolveOverviewType(appid);
+    if (type !== null) {
+      if (type !== 1) return true;
+      const store = apps();
+      if (store?.SetAppLaunchOptions) {
+        try {
+          await store.SetAppLaunchOptions(Number(appid), DEFAULT_LAUNCH_OPTIONS);
+          return true;
+        } catch (error) {
+        }
+      }
+    }
+    if (attempt + 1 < attempts) await delay(500);
+  }
+  return false;
 }
 
 async function applyWindowsCompatDefault(appid: string): Promise<boolean> {
@@ -373,7 +396,7 @@ export async function resetCompatToolToDefault(appid: string): Promise<string> {
   return applied && route === "windows" ? windowsCompatTool : "";
 }
 
-export async function resetAllCompatTools(appids: string[]): Promise<void> {
+export async function resetAllGamePolicies(appids: string[]): Promise<void> {
   await getProtonTools(true);
   let next = 0;
   const worker = async () => {
@@ -382,6 +405,7 @@ export async function resetAllCompatTools(appids: string[]): Promise<void> {
       const type = await resolveOverviewType(appid);
       if (type !== 1) continue;
       await applyCompatDefaultForRoute(appid, await clearCompatToolAndResolveRoute(appid));
+      await resetLaunchOptionsForGame(appid);
     }
   };
   await Promise.all(Array.from({ length: Math.min(10, appids.length) }, worker));
