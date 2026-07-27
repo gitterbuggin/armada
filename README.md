@@ -257,14 +257,49 @@ Join the Discord: [discord.gg/HdmdSxTD5S](https://discord.gg/HdmdSxTD5S)
 
 ## Credits
 
-- **[ROCKNIX](https://github.com/ROCKNIX):** bootloader, device support,
-  input mappings, audio profiles, and more.
+Armada stands on a lot of other people's work. The port to these devices would
+not exist without:
+
+**Distro & image base**
+
+- **[ROCKNIX](https://github.com/ROCKNIX):** the bulk of the mainline Qualcomm
+  device support — kernel patches, device trees, input mappings, audio profiles,
+  fan/LED drivers, and more. Most of `armada-packages/kernel/patches/` is derived
+  from ROCKNIX (see each component's `PATCHES.md`).
 - **[Bazzite](https://github.com/ublue-os/bazzite)** and the
   **[Universal Blue](https://github.com/ublue-os)** ecosystem: the bootc/image
   build structure, the [image-template](https://github.com/ublue-os/image-template)
   this repo is built from, and Steam/Gamescope session patterns.
 - **Fedora** and the **[bootc](https://github.com/bootc-dev/bootc)** project: the
   base image and tooling.
+
+**Steam-on-ARM stack**
+
+- **[FEX-Emu](https://github.com/FEX-Emu/FEX):** x86/x86-64 → AArch64 translation.
+- **[CachyOS](https://github.com/CachyOS/proton-cachyos):** the ARM64 (ARM64EC/wow64)
+  builds of Proton that make Windows games run on these handhelds.
+- **[Mesa](https://gitlab.freedesktop.org/mesa/mesa)** / **freedreno / turnip:** the
+  open Adreno Vulkan/GL driver, plus Valve's **[Gamescope](https://github.com/ValveSoftware/gamescope)**,
+  **[pressure-vessel / Steam Linux Runtime](https://github.com/ValveSoftware/steam-runtime-tools)**,
+  and **DXVK**.
+
+**AYN Odin (SDM845) port**
+
+The original Odin needed hardware enablement that lives outside ROCKNIX:
+
+- **[sigmaris](https://sigmaris.info/blog/2025/01/ayn-odin-u-boot/):** the
+  [U-Boot Odin port](https://github.com/sigmaris/u-boot) (`odin` branch) that
+  provides the UEFI boot path in place of a ROCKNIX ABL.
+- **[postmarketOS](https://postmarketos.org/)** and **Anton Bambura
+  ([jenneron](https://gitlab.com/jenneron/linux))**, with **Teguh Sobirin:** the
+  pmOS AYN Odin kernel is where most of Armada's SDM845 enablement comes from —
+  the mainline device tree plus the out-of-tree drivers Armada rebased onto
+  7.0.11 (the Odin gamepad, Innolux TD4328 panel, `qcom_fg`/pmi8998 fuel gauge,
+  ADC5 GPIO channels, the RMI4 panel-follower touchscreen, and SLIMbus tuning).
+- **[Project Valhalla](https://github.com/ProjectValhalla):** the `odin_custom_boot`
+  repartition package used to add a `loader` partition on multiboot-ABL Odins.
+- **[linux-msm](https://github.com/linux-msm/tqftpserv)** (Linaro): `tqftpserv`,
+  which serves the modem firmware the Odin's Wi-Fi/BT needs to come up.
 
 ## License
 
