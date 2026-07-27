@@ -7,6 +7,7 @@ STATE_FLAG="/run/armada/fake-suspend.active"
 WAKE_FLAG="/run/armada/fake-suspend.wake"
 SAVE_DIR="/run/armada/fake-suspend"
 LOG_TAG="armada-fake-suspend"
+WAKE_DEV=
 
 log() { logger -t "$LOG_TAG" -- "$*"; echo "$LOG_TAG: $*" >&2; }
 source /usr/lib/armada/input-lib
@@ -120,8 +121,6 @@ resume_runtime_pm() {
     done < <(tac "$SAVE_DIR/power-controls")
 }
 
-# The power key is left ungrabbed by block_input; wait_for_wake grabs it instead.
-
 power_device() {
     local dev name
     for dev in /dev/input/event*; do
@@ -133,17 +132,13 @@ power_device() {
 }
 
 block_input() {
-    local dev pdev
-    # Skip exactly the device wait_for_wake will grab — a separate name
-    # whitelist here drifted from power_device's matcher (pmic_pwrkey vs
-    # pm8941_pwrkey), leaving the power key exclusively grabbed and the
-    # wake-waiter starved: fake suspend then never woke.
-    pdev="$(power_device || true)"
+    local dev
     for dev in /dev/input/event*; do
         [[ -e "$dev" ]] || continue
-        [[ "$dev" == "$pdev" ]] && continue
         # Never grab the lid switch — logind/resume need its events to flow.
         armada_dev_has_lid "$dev" && continue
+        # A competing EVIOCGRAB would make the wake reader exit with EBUSY.
+        [[ -n "$WAKE_DEV" && "$dev" == "$WAKE_DEV" ]] && continue
         evtest --grab "$dev" >/dev/null 2>&1 &
     done
 }
@@ -153,11 +148,12 @@ unblock_input() { pkill -9 -f 'evtest --grab' 2>/dev/null || true; }
 # of reaching logind/Steam.
 wait_for_wake() {
     rm -f "$WAKE_FLAG"
-    local pdev t0 line lidwasclosed; pdev="$(power_device || true)"; t0=$SECONDS
+    local pdev t0 line lidwasclosed regrabs=0; pdev="$WAKE_DEV"; t0=$SECONDS
     # Clamshell: a closed lid blocks the power button (no waking in a bag); lid-open wakes.
     lidwasclosed=0; armada_lid_closed 2>/dev/null && lidwasclosed=1
     if [[ -n "$pdev" ]]; then
         log "waiting for wake (power key ${pdev})"
+        exec 3< <(evtest --grab "$pdev" 2>/dev/null)
         while true; do
             [[ -f "$WAKE_FLAG" ]] && { log "wake (flag)"; break; }
             if armada_lid_closed 2>/dev/null; then
@@ -165,15 +161,20 @@ wait_for_wake() {
             elif (( lidwasclosed )); then
                 log "wake (lid open)"; break
             fi
-            if IFS= read -r -t 1 line; then
+            if IFS= read -r -t 1 -u 3 line; then
                 case "$line" in
                     *"(KEY_POWER), value 1"*)
                         if (( SECONDS - t0 >= 1 )) && ! armada_lid_closed 2>/dev/null; then log "wake (power key)"; break; fi ;;
                 esac
             elif (( $? <= 128 )); then
-                sleep 1   # evtest ended (not a read timeout); avoid a busy loop
+                # A dead reader must be replaced or a lidless device stays asleep.
+                (( regrabs == 0 )) && log "wake reader died; re-grabbing"
+                regrabs=$((regrabs + 1))
+                sleep 1
+                exec 3< <(evtest --grab "$pdev" 2>/dev/null)
             fi
-        done < <(evtest --grab "$pdev" 2>/dev/null)
+        done
+        exec 3<&-
     else
         log "no power device; waiting on wake flag"
         while :; do
@@ -199,16 +200,22 @@ session_procs_file() {
 }
 
 freeze_processes() {
-    local procs p c
+    local procs p c cg freeze_file
 
-    # fake-suspend and armada-powerd run as system services, outside user.slice.
-    if systemctl freeze user.slice; then
-        touch "$SAVE_DIR/user-slice"
-        log "froze user.slice"
-        return
+    cg="$(as_session systemctl --user show app.slice -P ControlGroup 2>/dev/null)"
+    if [[ -n "$cg" ]]; then
+        freeze_file="/sys/fs/cgroup${cg}/cgroup.freeze"
+        if [[ -w "$freeze_file" ]]; then
+            printf '%s\n' "$cg" > "$SAVE_DIR/app-cgroup"
+            if echo 1 > "$freeze_file" 2>/dev/null; then
+                log "froze app.slice"
+                return
+            fi
+            rm -f "$SAVE_DIR/app-cgroup"
+        fi
     fi
 
-    log "failed to freeze user.slice; falling back to process freezer"
+    log "failed to freeze app.slice; falling back to process freezer"
     procs="$(session_procs_file)" || { log "no session cgroup; skipping freeze"; return; }
     [[ -r "$procs" ]] || { log "session procs unreadable; skipping freeze"; return; }
     : > "$SAVE_DIR/processes"
@@ -221,9 +228,11 @@ freeze_processes() {
     log "froze $(wc -l < "$SAVE_DIR/processes" 2>/dev/null || echo 0) processes"
 }
 unfreeze_processes() {
-    if [[ -f "$SAVE_DIR/user-slice" ]]; then
-        systemctl thaw user.slice || log "failed to thaw user.slice"
-        rm -f "$SAVE_DIR/user-slice"
+    if [[ -r "$SAVE_DIR/app-cgroup" ]]; then
+        local cg
+        read -r cg < "$SAVE_DIR/app-cgroup"
+        echo 0 > "/sys/fs/cgroup${cg}/cgroup.freeze" 2>/dev/null || log "failed to thaw app.slice"
+        rm -f "$SAVE_DIR/app-cgroup"
         return
     fi
 
@@ -238,6 +247,7 @@ do_suspend() {
     mkdir -p "$SAVE_DIR"
     touch "$STATE_FLAG"
     mute_audio
+    WAKE_DEV="$(power_device || true)"
     block_input
     display_off   # gamescope drm_sleep (game) / bl_power (desktop); after Steam's animation
     freeze_processes
