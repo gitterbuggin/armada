@@ -26,8 +26,9 @@ import {
   handledGameAppids,
   markCompatHandled,
   migrateWindowsCompatTool,
+  resetAllGamePolicies,
   resetCompatToolToDefault,
-  resetAllCompatTools,
+  resetLaunchOptionsForGame,
   resolveCompatState,
   resolveGameAppids,
   setAutoApplyCompat,
@@ -68,10 +69,36 @@ function ConfirmResetAllModal({ closeModal, onConfirm }: { closeModal?: () => vo
   return (
     <ModalRoot onCancel={closeModal}>
       <DialogBody>
-        This removes all per-game Armada settings, resets resolution overrides, applies the default Proton where Steam selects Proton, and leaves native Linux selections with Steam.
+        Restores Armada defaults for launch options, resolution, and compatibility across all games.
       </DialogBody>
       <DialogFooter>
         <DialogButton onClick={confirm}>Reset All Games</DialogButton>
+        <DialogButton onClick={closeModal}>Cancel</DialogButton>
+      </DialogFooter>
+    </ModalRoot>
+  );
+}
+
+function ConfirmResetGameModal({
+  closeModal,
+  gameName,
+  onConfirm,
+}: {
+  closeModal?: () => void;
+  gameName: string;
+  onConfirm: () => void;
+}) {
+  const confirm = () => {
+    closeModal?.();
+    onConfirm();
+  };
+  return (
+    <ModalRoot onCancel={closeModal}>
+      <DialogBody>
+        Restores Armada defaults for {gameName}. Custom launch options and per-game settings will be removed.
+      </DialogBody>
+      <DialogFooter>
+        <DialogButton onClick={confirm}>Reset Game</DialogButton>
         <DialogButton onClick={closeModal}>Cancel</DialogButton>
       </DialogFooter>
     </ModalRoot>
@@ -82,6 +109,7 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
   const [resolution, setResolution] = useState("Default");
   const [defaultResolution, setDefaultResolution] = useState(getGlobalResolution());
   const [resolutionMessage, setResolutionMessage] = useState("");
+  const [resettingGame, setResettingGame] = useState(false);
   const [resettingAll, setResettingAll] = useState(false);
   const [customSelected, setCustomSelected] = useState(false);
   const [showThunks, setShowThunks] = useState(false);
@@ -196,9 +224,9 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
       return next;
     });
   };
-  const resetGame = async () => {
-    if (!game?.appid) return;
-    const appid = game.appid;
+  const resetGame = async (appid: string) => {
+    if (resettingGame || resettingAll) return;
+    setResettingGame(true);
     setConfig((current) => {
       if (!current) return current;
       const next = clone(current);
@@ -206,18 +234,27 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
       return next;
     });
     try {
-      const tool = await resetCompatToolToDefault(appid);
-      setCurrentTool(tool === globalTool ? USE_DEFAULT_COMPAT : tool || FOLLOW_STEAM_COMPAT);
-      persistHandledGames();
-    } catch (error) {
-    }
-    if (apps?.SetAppResolutionOverride) {
       try {
-        await apps.SetAppResolutionOverride(Number(appid), "Default");
-        setResolution("Default");
-        setResolutionMessage("");
+        const tool = await resetCompatToolToDefault(appid);
+        if (selectedAppidRef.current === appid) {
+          setCurrentTool(tool === globalTool ? USE_DEFAULT_COMPAT : tool || FOLLOW_STEAM_COMPAT);
+        }
+        persistHandledGames();
       } catch (error) {
       }
+      await resetLaunchOptionsForGame(appid);
+      if (apps?.SetAppResolutionOverride) {
+        try {
+          await apps.SetAppResolutionOverride(Number(appid), "Default");
+          if (selectedAppidRef.current === appid) {
+            setResolution("Default");
+            setResolutionMessage("");
+          }
+        } catch (error) {
+        }
+      }
+    } finally {
+      setResettingGame(false);
     }
   };
   const setSteamResolution = async (value: string) => {
@@ -241,7 +278,8 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
     }
   };
   const resetAllGames = async () => {
-    if (resettingAll) return;
+    if (resettingAll || resettingGame) return;
+    const selectedAppid = selectedAppidRef.current;
     setResettingAll(true);
     setConfig((current) => {
       if (!current) return current;
@@ -263,12 +301,15 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
         }
       };
       await Promise.all([
-        resetAllCompatTools(gameAppids),
+        resetAllGamePolicies(gameAppids),
         Promise.all(Array.from({ length: Math.min(10, gameAppids.length) }, resetResolution)),
       ]);
       await saveCompatApplied(handledGameAppids());
       setResolution("Default");
-      if (game?.appid) setCurrentTool(compatSelection(await resolveCompatState(game.appid)));
+      if (selectedAppid && selectedAppidRef.current === selectedAppid) {
+        const state = await resolveCompatState(selectedAppid);
+        if (selectedAppidRef.current === selectedAppid) setCurrentTool(compatSelection(state));
+      }
     } catch (error) {
     } finally {
       setResettingAll(false);
@@ -276,6 +317,16 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
   };
   const confirmResetAllGames = () => {
     showModal(<ConfirmResetAllModal onConfirm={() => { void resetAllGames(); }} />);
+  };
+  const confirmResetGame = () => {
+    if (!game?.appid || resettingGame || resettingAll) return;
+    const appid = game.appid;
+    showModal(
+      <ConfirmResetGameModal
+        gameName={game.name || "this game"}
+        onConfirm={() => { void resetGame(appid); }}
+      />,
+    );
   };
   const gameOptions = editTargetOptions(config);
   // "" is the explicit Default target, not "nothing selected"; store a sentinel
@@ -398,13 +449,13 @@ export function Compatibility({ config, setConfig }: { config: Config; setConfig
       </PanelSection>
       {!editingDefault ? (
         <PanelSection>
-          <ButtonItem layout="below" onClick={resetGame}>
-            Reset to Default
+          <ButtonItem layout="below" disabled={resettingGame || resettingAll} onClick={confirmResetGame}>
+            {resettingGame ? "Resetting..." : "Reset to Default"}
           </ButtonItem>
         </PanelSection>
       ) : (
         <PanelSection>
-          <ButtonItem layout="below" disabled={resettingAll} onClick={confirmResetAllGames}>
+          <ButtonItem layout="below" disabled={resettingAll || resettingGame} onClick={confirmResetAllGames}>
             {resettingAll ? "Resetting..." : "Reset All Games"}
           </ButtonItem>
         </PanelSection>

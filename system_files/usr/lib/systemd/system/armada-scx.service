@@ -1,0 +1,14 @@
+[Unit]
+Description=Armada LAVD sched_ext scheduler
+ConditionPathIsDirectory=/sys/kernel/sched_ext
+StartLimitIntervalSec=30
+StartLimitBurst=2
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/armada-scx
+ExecStart=/usr/bin/scx_lavd $SCX_FLAGS
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

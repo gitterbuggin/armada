@@ -43,6 +43,7 @@ systemctl enable armada-audio-awake.service
 systemctl enable armada-installer-visibility.service
 systemctl enable armada-steamapps.service
 systemctl enable armada-powerd.service
+systemctl enable armada-scx.service
 systemctl enable armada-control.service
 systemctl enable armada-steamos-manager.service
 systemctl --global enable armada-steamos-manager.service
@@ -53,6 +54,8 @@ systemctl enable armada-bootimg-sync.service
 # takes finalize-staged and skips bootimg-sync; SM8550 does the reverse.
 systemctl enable armada-finalize-staged.path
 systemctl enable armada-flatpak-setup.service
+systemctl enable armada-waydroid-input.path
+systemctl disable waydroid-container.service
 
 # Updates are manual (Steam UI / steamos-update). The base image enables this
 # timer, which would auto-pull multi-GB images on metered tethering. Opt in with

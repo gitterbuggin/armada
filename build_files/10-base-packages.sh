@@ -28,12 +28,14 @@ dnf5 -y install --setopt=install_weak_deps=False \
     python3-gobject \
     python3-websocket-client \
     polkit \
+    upower \
     sudo \
     rsync \
     curl \
     jq \
     htop \
     lsof \
+    scx-scheds \
     unzip \
     evtest \
     libgpiod-utils \
@@ -87,12 +89,17 @@ dnf5 -y install --setopt=install_weak_deps=False \
     libdbusmenu-gtk3 \
     kdialog \
     kio-extras \
+    libsmbclient \
+    cifs-utils \
+    waydroid \
     kscreen \
     konsole \
-    dolphin
+    dolphin \
+    ark \
+    gwenview \
+    kwrite
 
 dnf5 -y install --setopt=install_weak_deps=False \
-    protonplus \
     heroic-games-launcher
 
 dnf5 -y install --setopt=install_weak_deps=False \
