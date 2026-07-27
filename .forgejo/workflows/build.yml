@@ -83,7 +83,11 @@ jobs:
             done
           fi
 
-          buildah build ${ARGS} \
+          # --pull=always: the odin build overrides KERNEL_PKG (and others) to
+          # ':latest' tags on the LAN registry. Without this, buildah reuses a
+          # stale locally-cached ':latest' (e.g. an old kernel), so a freshly
+          # built kernel silently doesn't land in the image. Force a fresh pull.
+          buildah build --pull=always ${ARGS} \
             --build-arg ARMADA_VERSION=${{ steps.version.outputs.version }} \
             -f Containerfile -t "armada:${TAG}" .
 
