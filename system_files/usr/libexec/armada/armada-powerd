@@ -208,6 +208,7 @@ class ArmadaPower:
         self.profile = ""
         self.gpu_level = "auto"
         self.manual_gpu_clock = 0
+        self.gpu_throttle_freq = 0
         self.smoothed_temp = 0.0
         self.last_pwm = 0
         self.suspended = False
@@ -226,6 +227,7 @@ class ArmadaPower:
             self.set_gpu_manual_clock(self.manual_gpu_clock)
         self.fan_tick()
         GLib.timeout_add_seconds(3, self.fan_tick)
+        GLib.timeout_add_seconds(3, self.gpu_throttle_tick)
 
     def discover(self):
         self.gpu = self.discover_gpu()
@@ -235,6 +237,13 @@ class ArmadaPower:
         self.fan_enable = self.fan_hwmon / "pwm1_enable" if self.fan_hwmon else None
         self.fan_rpm = self.fan_hwmon / "fan1_input" if self.fan_hwmon else None
         self.temp_paths = self.discover_temps()
+        self.gpu_temp_paths = self.discover_gpu_temps()
+        # sdm845 (Adreno 630) only: honour the profiles' throttle_temp userspace
+        # GPU throttle. Gated by the modem remoteproc marker (present on the Odin,
+        # absent on SM8550+) so the shared config/code can't surprise other SoCs.
+        self.throttle_enabled = Path(
+            "/sys/bus/platform/devices/4080000.remoteproc"
+        ).exists()
 
     def cpu_device_class(self):
         return self.env.get("ARMADA_SOC_CLASS", "")
@@ -315,6 +324,7 @@ class ArmadaPower:
                 "cpu_underclock": parser.get(section, "cpu_underclock").strip().lower(),
                 "gpu_max": require_ratio(parser, section, "gpu_max"),
                 "gpu_min": require_ratio(parser, section, "gpu_min"),
+                "throttle_temp": parser.getint(section, "throttle_temp", fallback=0),
                 "fan_curve": fan_curve,
                 "cpu_max_policy": {},
             }
@@ -411,6 +421,63 @@ class ArmadaPower:
             if kind.startswith(("cpu", "gpu", "gpuss", "video", "mem")):
                 control.append(temp)
         return control
+
+    def discover_gpu_temps(self):
+        paths = []
+        for zone in Path("/sys/class/thermal").glob("thermal_zone*"):
+            temp = zone / "temp"
+            if temp.exists() and read_text(zone / "type").lower().startswith(("gpu", "gpuss")):
+                paths.append(temp)
+        return paths
+
+    def read_gpu_temp(self):
+        values = [int(v) // 1000 for v in (read_text(p) for p in self.gpu_temp_paths) if v.isdigit()]
+        return max(values) if values else 0
+
+    def gpu_throttle_tick(self):
+        # Android-style per-profile "throttle start": once the GPU thermal zone
+        # crosses the profile's throttle_temp, cap devfreq max_freq one OPP step
+        # per tick (with a few-degree hysteresis before ramping back), sitting
+        # UNDER the kernel's 85C step_wise safety throttle. sdm845 only; other
+        # SoCs and profiles without throttle_temp are left untouched.
+        try:
+            if not (self.throttle_enabled and self.gpu and self.gpu_level == "auto"):
+                return True
+            freqs = self.gpu_freqs()
+            if not freqs:
+                return True
+            settings = self.profile_settings()
+            ceiling = self.choose_at_most(freqs, int(freqs[-1] * settings["gpu_max"]))
+            throttle_temp = settings.get("throttle_temp") or 0
+            prof_min = self.choose_at_least(freqs, int(freqs[-1] * settings["gpu_min"])) if settings["gpu_min"] else freqs[0]
+            prof_min = min(prof_min, ceiling)
+            if not throttle_temp:
+                if self.gpu_throttle_freq and self.gpu_throttle_freq < ceiling:
+                    write_text(self.gpu / "max_freq", ceiling)
+                    write_text(self.gpu / "min_freq", prof_min)
+                self.gpu_throttle_freq = 0
+                return True
+            cur = min(max(self.gpu_throttle_freq or ceiling, freqs[0]), ceiling)
+            try:
+                idx = freqs.index(cur)
+            except ValueError:
+                idx = freqs.index(ceiling)
+            temp = self.read_gpu_temp()
+            if temp >= throttle_temp and idx > 0:
+                idx -= 1
+            elif temp <= throttle_temp - 4 and freqs[idx] < ceiling:
+                idx += 1
+            new_cap = min(freqs[idx], ceiling)
+            if new_cap != self.gpu_throttle_freq:
+                # Order writes so min never momentarily exceeds max (devfreq rejects
+                # that), then restore the profile's floor clamped under the new cap.
+                write_text(self.gpu / "min_freq", freqs[0])
+                write_text(self.gpu / "max_freq", new_cap)
+                write_text(self.gpu / "min_freq", min(prof_min, new_cap))
+            self.gpu_throttle_freq = new_cap
+        except Exception as exc:
+            print(f"armada-powerd: gpu throttle tick failed: {exc}", file=sys.stderr)
+        return True
 
     def load_state(self):
         if not STATE_FILE.exists():
@@ -656,6 +723,8 @@ class ArmadaPower:
         write_text(self.gpu / "min_freq", freqs[0])
         write_text(self.gpu / "max_freq", max_freq)
         write_text(self.gpu / "min_freq", min(min_freq, max_freq))
+        # Re-arm the userspace throttle from the new ceiling on any profile change.
+        self.gpu_throttle_freq = 0
 
     def set_gpu_manual_clock(self, mhz):
         freqs = self.gpu_freqs()
