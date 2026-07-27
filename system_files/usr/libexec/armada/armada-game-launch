@@ -181,6 +181,17 @@ def main():
     # set. Keep Armada's default clean while preserving an explicit user HUD.
     os.environ.setdefault("DXVK_HUD", "none")
 
+    # SDM845 (Adreno 630) can't expose the Vulkan feature storageBuffer16BitAccess,
+    # so cachyos's DXVK rejects the GPU ("No adapters found") and every D3D game
+    # fails at device creation. WineD3D (D3D->OpenGL, forwarded through the FEX
+    # libGL thunk to host Turnip) has no such requirement and runs a good chunk of
+    # the library (D3D9 + lighter D3D11 titles; heavy D3D11/Unity FL11_0 games
+    # still won't until a patched DXVK lands). Gate to sdm845 via the modem
+    # remoteproc marker so SM8550+ keeps DXVK. setdefault preserves an explicit
+    # per-game override. Revisit once a 16bit-storage-optional DXVK is built.
+    if pathlib.Path("/sys/bus/platform/devices/4080000.remoteproc").exists():
+        os.environ.setdefault("PROTON_USE_WINED3D", "1")
+
     game_id = appid()
     try:
         contract = load_fex_contract()
