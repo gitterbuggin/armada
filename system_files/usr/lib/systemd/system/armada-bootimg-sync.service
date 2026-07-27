@@ -1,6 +1,14 @@
 [Unit]
 Description=Rebuild the ABL boot.img for the next-boot deployment before reboot
 ConditionPathExists=/run/ostree-booted
+# SM8550-family only. This rebuilds the ESP /KERNEL Android boot.img that the
+# ABL boots directly; the SDM845 AYN Odin instead boots ABL->U-Boot->GRUB->BLS
+# and never reads /boot/efi/KERNEL. On the Odin armada-bootimg-update also fails
+# (its assembled cmdline exceeds the 512B header-v0 limit), and the ExecStop
+# `|| bootc rollback` then reverts every bootc upgrade on shutdown. Gate off on
+# sdm845 via the modem remoteproc marker (present on the Odin, absent on SM8550),
+# the negation of the sdm845 Wi-Fi units' ConditionPathExists.
+ConditionPathExists=!/sys/bus/platform/devices/4080000.remoteproc
 DefaultDependencies=no
 RequiresMountsFor=/sysroot /boot /boot/efi
 # Reverse stop order: ordered before finalize so our ExecStop runs after it,

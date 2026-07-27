@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch for a staged bootc deployment and finalize it eagerly (Odin)
+# Gate to the SDM845 Odin (modem remoteproc marker; absent on SM8550, which
+# keeps bootc's normal shutdown finalization). See armada-finalize-staged.service.
+ConditionPathExists=/run/ostree-booted
+ConditionPathExists=/sys/bus/platform/devices/4080000.remoteproc
+
+[Path]
+PathExists=/run/ostree/staged-deployment
+Unit=armada-finalize-staged.service
+
+[Install]
+WantedBy=multi-user.target

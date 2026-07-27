@@ -47,6 +47,11 @@ systemctl enable armada-control.service
 systemctl enable armada-steamos-manager.service
 systemctl --global enable armada-steamos-manager.service
 systemctl enable armada-bootimg-sync.service
+# Eagerly finalize staged bootc deployments on the Odin (its unclean shutdown
+# truncates bootc's ExecStop finalizer, so upgrades never land otherwise). Both
+# this .path and armada-bootimg-sync are ConditionPathExists-gated: the Odin
+# takes finalize-staged and skips bootimg-sync; SM8550 does the reverse.
+systemctl enable armada-finalize-staged.path
 systemctl enable armada-flatpak-setup.service
 
 # Updates are manual (Steam UI / steamos-update). The base image enables this

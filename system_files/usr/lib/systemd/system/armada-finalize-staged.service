@@ -1,0 +1,23 @@
+[Unit]
+Description=Finalize the staged bootc deployment immediately (Odin: unreliable shutdown finalize)
+# SDM845 AYN Odin only. bootc's own finalizer (bootc-finalize-staged.service)
+# commits the staged deployment in its ExecStop, i.e. at shutdown. The Odin
+# shuts down uncleanly (ext4/FAT recovery every boot; journal never survives),
+# so that ExecStop is frequently truncated before it commits and the staged
+# deployment is pruned on the next boot -- `bootc upgrade` then silently never
+# lands. Finalize NOW, while the system is fully up, and sync, so the deployment
+# swap is durably on disk before the fragile shutdown window. See the
+# odin-open-items memory ("bootc never deploys").
+ConditionPathExists=/run/ostree-booted
+ConditionPathExists=/run/ostree/staged-deployment
+ConditionPathExists=/sys/bus/platform/devices/4080000.remoteproc
+RequiresMountsFor=/sysroot /boot /etc
+After=multi-user.target
+
+[Service]
+Type=oneshot
+# Proven on-device: `ostree admin finalize-staged` fully commits the composefs
+# deployment (the same swap bootc does at shutdown), then sync to beat the
+# unclean-shutdown data-loss window.
+ExecStart=/usr/bin/ostree admin finalize-staged
+ExecStart=/bin/sync
