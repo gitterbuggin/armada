@@ -20,4 +20,8 @@ Type=oneshot
 # deployment (the same swap bootc does at shutdown), then sync to beat the
 # unclean-shutdown data-loss window.
 ExecStart=/usr/bin/ostree admin finalize-staged
+# Re-assert the GRUB `devicetree` BLS key ostree drops when it regenerates the
+# entry, so the just-finalized deployment boots the kernel's own DTB (787 GPU
+# OPP, panel/gamepad/audio) instead of U-Boot's. See armada-odin-bls-dtb.
+ExecStart=/usr/libexec/armada/armada-odin-bls-dtb
 ExecStart=/bin/sync

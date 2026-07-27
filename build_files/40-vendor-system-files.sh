@@ -53,6 +53,10 @@ systemctl enable armada-bootimg-sync.service
 # this .path and armada-bootimg-sync are ConditionPathExists-gated: the Odin
 # takes finalize-staged and skips bootimg-sync; SM8550 does the reverse.
 systemctl enable armada-finalize-staged.path
+# Odin only (self-gated): re-assert the GRUB `devicetree` BLS key that ostree
+# drops on `bootc upgrade`, so the kernel's own DTB (787 GPU OPP + panel/gamepad/
+# audio) is loaded instead of U-Boot's minimal one.
+systemctl enable armada-odin-bls-dtb.service
 systemctl enable armada-flatpak-setup.service
 systemctl enable armada-waydroid-input.path
 systemctl disable waydroid-container.service

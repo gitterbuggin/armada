@@ -81,8 +81,10 @@ if [[ "${ARMADA_VARIANT}" == odin ]]; then
     # differ enough to hang early boot), so add a `devicetree` key to each BLS
     # entry pointing at the DTB deployed next to the kernel. GRUB reads these
     # paths relative to the boot partition it already loads the kernel from.
-    # NOTE: ostree regenerates BLS entries on `bootc upgrade`, so this covers the
-    # initial deployment; a persistent mechanism is a follow-up.
+    # NOTE: ostree regenerates BLS entries on `bootc upgrade`, dropping this key.
+    # armada-odin-bls-dtb (run from armada-finalize-staged.service and its own
+    # boot-time .service) re-asserts it on every staged/booted deployment; this
+    # block just seeds the very first (flashed) deployment before either runs.
     ODIN_DTB="${ARMADA_ODIN_DTB:-sdm845-ayn-odin}"
     for conf in "${WORK}/p2mnt"/loader*/entries/*.conf; do
         sudo test -f "${conf}" || continue

@@ -1,0 +1,20 @@
+[Unit]
+Description=Ensure Odin BLS entries load the kernel's own DTB (GRUB devicetree key)
+# SDM845 AYN Odin only (modem remoteproc marker; absent on SM8550-family). A
+# boot-time reconcile that heals BLS entries created without the devicetree key
+# — pre-fix images, `bootc rollback`, or the installer — so the next boot loads
+# the kernel's full DTB. Steady-state upgrades are already fixed at stage time
+# by armada-finalize-staged.service; this is the safety net for every other path.
+ConditionPathExists=/run/ostree-booted
+ConditionPathExists=/sys/bus/platform/devices/4080000.remoteproc
+RequiresMountsFor=/boot
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/armada/armada-odin-bls-dtb
+
+[Install]
+WantedBy=multi-user.target

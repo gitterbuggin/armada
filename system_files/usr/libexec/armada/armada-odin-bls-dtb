@@ -1,0 +1,68 @@
+#!/bin/bash
+# Ensure every BLS entry carries a `devicetree` key pointing at its OWN kernel's
+# Odin DTB, so GRUB loads the kernel's full device tree (panel/gamepad/audio
+# nodes + the 787 MHz GPU overclock OPP) instead of the minimal one U-Boot
+# passes over EFI.
+#
+# finalize-armada-image.sh sets this once at disk-image build time, but ostree
+# regenerates BLS entries on every `bootc upgrade` and knows nothing about the
+# custom key, so the upgraded deployment boots U-Boot's DTB (stock a630 OPP
+# table, tops out at 710 MHz — no 787). We re-assert the key on each staged
+# deployment (armada-finalize-staged.service) and at boot (this script's
+# .service), so it survives upgrades, rollbacks, and installer deploys.
+#
+# SDM845 AYN Odin only; a no-op elsewhere (the DTB doesn't exist and the units
+# are ConditionPathExists-gated on the modem remoteproc marker).
+set -uo pipefail
+
+# Belt-and-suspenders gate: only the Odin has this modem remoteproc.
+[ -e /sys/bus/platform/devices/4080000.remoteproc ] || exit 0
+
+BOOT="${1:-/boot}"
+ODIN_DTB="${ARMADA_ODIN_DTB:-sdm845-ayn-odin}"
+changed=0
+
+# bootc keeps /boot read-only outside ostree transactions; remount rw to edit
+# the BLS entries, and restore ro on exit if we were the ones who flipped it.
+remounted_rw=0
+restore_boot_mount() {
+    [ "${remounted_rw}" = 1 ] && mount -o remount,ro "${BOOT}" 2>/dev/null || true
+}
+if findmnt -rn "${BOOT}" >/dev/null 2>&1; then
+    if findmnt -rn -o OPTIONS "${BOOT}" | grep -qw ro; then
+        if mount -o remount,rw "${BOOT}" 2>/dev/null; then
+            remounted_rw=1
+            trap restore_boot_mount EXIT
+        else
+            echo "armada-odin-bls-dtb: could not remount ${BOOT} rw" >&2
+            exit 0
+        fi
+    fi
+fi
+
+shopt -s nullglob
+for conf in "${BOOT}"/loader*/entries/*.conf; do
+    [ -f "${conf}" ] || continue
+    # Derive the DTB path from the entry's own kernel so each deployment points
+    # at its matching DTB (bootprefix=true: the linux line already carries /boot).
+    linux_line=$(sed -n 's/^linux //p' "${conf}" | head -1)
+    [ -n "${linux_line}" ] || continue
+    dtb_rel="$(dirname "${linux_line}")/dtb/qcom/${ODIN_DTB}.dtb"
+    if [ ! -f "${dtb_rel}" ]; then
+        echo "armada-odin-bls-dtb: DTB missing, skipping $(basename "${conf}"): ${dtb_rel}" >&2
+        continue
+    fi
+    current=$(sed -n 's/^devicetree //p' "${conf}" | head -1)
+    [ "${current}" = "${dtb_rel}" ] && continue
+    if [ -n "${current}" ]; then
+        sed -i "s|^devicetree .*|devicetree ${dtb_rel}|" "${conf}"
+    else
+        printf 'devicetree %s\n' "${dtb_rel}" >> "${conf}"
+    fi
+    echo "armada-odin-bls-dtb: set 'devicetree ${dtb_rel}' in $(basename "${conf}")"
+    changed=1
+done
+
+# Durably land the edit ahead of the Odin's fragile unclean-shutdown window.
+[ "${changed}" = 1 ] && sync
+exit 0
