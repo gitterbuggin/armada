@@ -82,6 +82,30 @@ resume_radios() {
     done < "$SAVE_DIR/radios"
 }
 
+# AYN Odin (SDM845) decorative side-bar (1/2) and joystick-ring (3/4) LEDs,
+# gpio-leds exposed as blue:backlight-1..4 (see armada-control LED_GROUPS). Kill
+# them while suspended so a "sleeping" Odin isn't glowing, then restore whatever
+# the user had (persisted prefs live in /etc/armada/leds.json). No-op elsewhere:
+# the glob matches nothing on devices without these LEDs.
+suspend_leds() {
+    : > "$SAVE_DIR/leds"
+    local bright name previous
+    for bright in /sys/class/leds/blue:backlight-[1-4]/brightness; do
+        [[ -w "$bright" ]] || continue
+        previous="$(cat "$bright" 2>/dev/null)" || continue
+        printf '%s\t%s\n' "$bright" "$previous" >> "$SAVE_DIR/leds"
+        echo 0 > "$bright" 2>/dev/null || log "failed to blank ${bright}"
+    done
+}
+resume_leds() {
+    [[ -r "$SAVE_DIR/leds" ]] || return 0
+    local bright previous
+    while IFS=$'\t' read -r bright previous; do
+        [[ -w "$bright" ]] || continue
+        echo "$previous" > "$bright" 2>/dev/null || log "failed to restore ${bright}=${previous}"
+    done < "$SAVE_DIR/leds"
+}
+
 runtime_pm_devices() {
     local dev
     # Leave GPU runtime PM alone here; the GMU is known to wedge under
@@ -250,6 +274,7 @@ do_suspend() {
     WAKE_DEV="$(power_device || true)"
     block_input
     display_off   # gamescope drm_sleep (game) / bl_power (desktop); after Steam's animation
+    suspend_leds  # blank the decorative side/stick LEDs (Odin)
     freeze_processes
     # Radio suspend disabled until we can improve resume speed (currently takes 30+ seconds)
     # suspend_radios
@@ -272,6 +297,7 @@ do_resume() {
     unfreeze_processes
     unblock_input
     unmute_audio
+    resume_leds   # restore the decorative side/stick LEDs (Odin)
     display_on
     rm -f "$STATE_FLAG"
     rm -rf "$SAVE_DIR"
