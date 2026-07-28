@@ -44,10 +44,17 @@ repo_gpgcheck=0
 enabled=1
 REPO
 
-# hexagonrpc (hexagonrpcd), pd-mapper, libssc, and the SSC-enabled iio-sensor-proxy
-# (replaces stock iio-sensor-proxy, which only reads kernel IIO — none here).
+# hexagonrpc (hexagonrpcd), pd-mapper, libssc — copr-only, plain install.
 dnf5 -y install --setopt=install_weak_deps=False --allowerasing \
     hexagonrpc pd-mapper libssc iio-sensor-proxy
+# The SSC-enabled iio-sensor-proxy in the copr is 3.7; stock Fedora ships 3.8, so
+# a plain install keeps stock (which only reads kernel IIO — nothing here). Force
+# the copr build by downgrading to the highest version below stock (= copr 3.7,
+# the libssc/SSC build). Robust across copr rebuilds (no hardcoded NVR).
+dnf5 -y downgrade --setopt=install_weak_deps=False --allowerasing iio-sensor-proxy
+case "$(rpm -q iio-sensor-proxy)" in
+    *-3.8-*) echo "WARNING: iio-sensor-proxy is still stock 3.8 (no SSC support)" >&2 ;;
+esac
 
 # Don't leave the copr enabled in the shipped image.
 rm -f /etc/yum.repos.d/_copr_mobility-sdm845.repo
