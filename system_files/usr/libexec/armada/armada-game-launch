@@ -182,15 +182,20 @@ def main():
     os.environ.setdefault("DXVK_HUD", "none")
 
     # SDM845 (Adreno 630) can't expose the Vulkan feature storageBuffer16BitAccess,
-    # so cachyos's DXVK rejects the GPU ("No adapters found") and every D3D game
-    # fails at device creation. WineD3D (D3D->OpenGL, forwarded through the FEX
-    # libGL thunk to host Turnip) has no such requirement and runs a good chunk of
-    # the library (D3D9 + lighter D3D11 titles; heavy D3D11/Unity FL11_0 games
-    # still won't until a patched DXVK lands). Gate to sdm845 via the modem
-    # remoteproc marker so SM8550+ keeps DXVK. setdefault preserves an explicit
-    # per-game override. Revisit once a 16bit-storage-optional DXVK is built.
+    # which cachyos's main DXVK 3.0+ hard-requires (added with its Vulkan 1.4 gate)
+    # -> it rejects the GPU ("No adapters found") and every D3D game fails at device
+    # creation. cachyos already bundles DXVK-Sarek (Vulkan 1.1/1.2, no 16-bit-storage
+    # gate) at files/lib/wine/dxvk-sarek/aarch64-windows/ and its proton honours
+    # PROTON_DXVK_SAREK=1 to force it. Its own auto-fallback MISSES the A630: it only
+    # checks descriptorIndexing (which the A630 has), so it keeps the failing DXVK.
+    # Force Sarek. Verified on-device: Hollow Knight + Among Us (Unity D3D11) now run
+    # on stock Proton 11 cachyos-arm64. This supersedes the earlier WineD3D stopgap
+    # (real DXVK->Vulkan beats D3D->GL and handles the D3D11/Unity titles WineD3D
+    # couldn't). Gate to sdm845 via the modem remoteproc marker so SM8550+ keeps the
+    # full DXVK; setdefault preserves an explicit per-game override. A game that
+    # prefers WineD3D can still set PROTON_USE_WINED3D=1 as a per-game tweak.
     if pathlib.Path("/sys/bus/platform/devices/4080000.remoteproc").exists():
-        os.environ.setdefault("PROTON_USE_WINED3D", "1")
+        os.environ.setdefault("PROTON_DXVK_SAREK", "1")
 
     game_id = appid()
     try:
