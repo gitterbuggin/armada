@@ -9,10 +9,12 @@
 // Gamepad::Accelerometer / Gamepad::Gyro.
 //
 // Orientation and scale differ per chassis and want on-device tuning, so the
-// mount matrix and full-scale ranges are read from the environment (no rebuild):
-//   ARMADA_IMU_MOUNT   = "m00,m01,m02,m10,m11,m12,m20,m21,m22" (3x3, default identity)
+// mount matrix and full-scale ranges are read from the environment (no rebuild).
+// The compiled-in defaults below are the tuned AYN Odin values (gyro aiming
+// verified in Steam Input); override per-unit via /etc/armada/imu-bridge.env:
+//   ARMADA_IMU_MOUNT   = "m00,m01,m02,m10,m11,m12,m20,m21,m22" (3x3)
 //   ARMADA_IMU_ACCEL_FS = accel full-scale in m/s^2 mapped to the axis max (default 78.5 = 8g)
-//   ARMADA_IMU_GYRO_FS  = gyro  full-scale in deg/s mapped to the axis max (default 2000)
+//   ARMADA_IMU_GYRO_FS  = gyro  full-scale in deg/s mapped to the axis max (default 100)
 // libssc reports accel in m/s^2 and gyro angular velocity in rad/s.
 
 #include <libssc.h>
@@ -31,9 +33,12 @@
 #define RAD2DEG  (180.0 / M_PI)
 
 static int uinput_fd = -1;
-static double mount[9] = {1,0,0, 0,1,0, 0,0,1};
+// Tuned AYN Odin defaults: the IMU chip is rotated relative to the chassis, so
+// map sensor->chassis as X=+sensorY, Y=-sensorX (verified: turn->yaw, tilt->pitch,
+// no inversion in Steam Input). gyro_fs=100 gives comfortably aggressive aiming.
+static double mount[9] = {0,-1,0, 1,0,0, 0,0,1};
 static double accel_fs = 78.5;   // m/s^2 at AXIS_MAX
-static double gyro_fs  = 2000.0; // deg/s  at AXIS_MAX
+static double gyro_fs  = 100.0;  // deg/s  at AXIS_MAX
 // InputPlumber refuses to manage *virtual* (uinput) devices unless their name is
 // in its hardcoded VIRT_DEVICE_WHITELIST — which already includes Sunshine's
 // virtual motion-sensor device. Impersonate that name so InputPlumber adopts our
@@ -58,7 +63,7 @@ static void parse_env(void)
 	const char *y = g_getenv("ARMADA_IMU_GYRO_FS");
 	if (y) gyro_fs = g_ascii_strtod(y, NULL);
 	if (accel_fs <= 0) accel_fs = 78.5;
-	if (gyro_fs  <= 0) gyro_fs  = 2000.0;
+	if (gyro_fs  <= 0) gyro_fs  = 100.0;
 	const char *n = g_getenv("ARMADA_IMU_NAME");
 	if (n && *n) dev_name = n;
 }
