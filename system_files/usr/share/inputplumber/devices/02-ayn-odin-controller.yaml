@@ -23,6 +23,14 @@ source_devices:
       phys_path: odin-gamepad/input0
       handler: event*
     capability_map_id: ayn_odin
+  # The Odin's rumble motor is a SEPARATE input device (pmi8998 SPMI haptics,
+  # qcom-spmi-haptics driver) — odin-gamepad has no force feedback of its own.
+  # Add it as a source so InputPlumber forwards the virtual controller's rumble
+  # (PackedRumbleReport -> evdev FF_RUMBLE) to the motor. Verified on-device.
+  - group: gamepad
+    evdev:
+      name: spmi_haptics
+      handler: event*
 
 options:
   auto_manage: true
