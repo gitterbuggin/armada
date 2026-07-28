@@ -32,12 +32,15 @@ source_devices:
       name: spmi_haptics
       handler: event*
   # The IMU (accel+gyro) is behind the SLPI DSP with no evdev/IIO node of its own;
-  # armada-imu-bridge streams it (via libssc) to a uinput device 'Armada Odin IMU'.
-  # imu_generic maps its ABS_X/Y/Z -> accelerometer and ABS_RX/RY/RZ -> gyro, which
-  # feed the deck target's gyro -> Steam Input motion controls.
+  # armada-imu-bridge streams it (via libssc) to a uinput device. InputPlumber
+  # only adopts *virtual* devices whose name is in its hardcoded whitelist, which
+  # already includes Sunshine's virtual motion sensors — so the daemon names it
+  # that (see armada-imu-bridge.c / ARMADA_IMU_NAME). imu_generic maps its
+  # ABS_X/Y/Z -> accelerometer and ABS_RX/RY/RZ -> gyro, feeding the deck target's
+  # gyro -> Steam Input motion controls.
   - group: imu
     evdev:
-      name: Armada Odin IMU
+      name: Sunshine gamepad (virtual) motion sensors
       handler: event*
     capability_map_id: imu_generic
 

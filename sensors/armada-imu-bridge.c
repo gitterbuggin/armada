@@ -34,6 +34,13 @@ static int uinput_fd = -1;
 static double mount[9] = {1,0,0, 0,1,0, 0,0,1};
 static double accel_fs = 78.5;   // m/s^2 at AXIS_MAX
 static double gyro_fs  = 2000.0; // deg/s  at AXIS_MAX
+// InputPlumber refuses to manage *virtual* (uinput) devices unless their name is
+// in its hardcoded VIRT_DEVICE_WHITELIST — which already includes Sunshine's
+// virtual motion-sensor device. Impersonate that name so InputPlumber adopts our
+// IMU without an InputPlumber patch (no Sunshine device config ships, so no
+// collision). Overridable via ARMADA_IMU_NAME. TODO: cleaner = patch
+// InputPlumber's whitelist to accept "Armada Odin IMU".
+static const char *dev_name = "Sunshine gamepad (virtual) motion sensors";
 
 static void parse_env(void)
 {
@@ -52,6 +59,8 @@ static void parse_env(void)
 	if (y) gyro_fs = g_ascii_strtod(y, NULL);
 	if (accel_fs <= 0) accel_fs = 78.5;
 	if (gyro_fs  <= 0) gyro_fs  = 2000.0;
+	const char *n = g_getenv("ARMADA_IMU_NAME");
+	if (n && *n) dev_name = n;
 }
 
 static void apply_mount(double x, double y, double z, double out[3])
@@ -124,7 +133,7 @@ static int setup_uinput(void)
 	us.id.bustype = BUS_VIRTUAL;
 	us.id.vendor  = 0x0000;
 	us.id.product = 0x0001;
-	g_strlcpy(us.name, "Armada Odin IMU", sizeof(us.name));
+	g_strlcpy(us.name, dev_name, sizeof(us.name));
 	if (ioctl(fd, UI_DEV_SETUP, &us) < 0) { g_printerr("UI_DEV_SETUP: %m\n"); close(fd); return -1; }
 	if (ioctl(fd, UI_DEV_CREATE) < 0)     { g_printerr("UI_DEV_CREATE: %m\n"); close(fd); return -1; }
 	return fd;
