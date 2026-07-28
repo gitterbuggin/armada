@@ -64,6 +64,8 @@ systemctl enable armada-waydroid-input.path
 # iio-sensor-proxy is D-Bus activated (net.hadess.SensorProxy), no enable needed.
 systemctl enable pd-mapper.service
 systemctl enable hexagonrpcd-sdsp.service
+# Gyro/accel -> uinput bridge for InputPlumber (Odin; gated on /dev/fastrpc-sdsp).
+systemctl enable armada-imu-bridge.service
 systemctl disable waydroid-container.service
 
 # Updates are manual (Steam UI / steamos-update). The base image enables this

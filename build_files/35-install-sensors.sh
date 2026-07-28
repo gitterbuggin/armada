@@ -60,3 +60,15 @@ esac
 rm -f /etc/yum.repos.d/_copr_mobility-sdm845.repo
 
 echo "Installed SLPI sensor stack: hexagonrpc + pd-mapper + libssc + iio-sensor-proxy(ssc)"
+
+# --- 3. armada-imu-bridge (gyro/accel -> uinput for InputPlumber) ---
+# Built from source in the imu-bridge Containerfile stage (libssc 0.4.4 with gyro
+# + the daemon), staged at /packages/imu-bridge. Installs /usr/bin/armada-imu-bridge
+# and its private /usr/lib/armada/imu/libssc.so (rpath-linked, distinct from the
+# copr libssc). Runtime deps (libqmi, protobuf-c, glib) came in with the copr stack.
+if [ -d /packages/imu-bridge ]; then
+    cp -a /packages/imu-bridge/. /
+    echo "Installed armada-imu-bridge + private libssc 0.4.4 (gyro)"
+else
+    echo "WARNING: /packages/imu-bridge missing — gyro bridge not installed" >&2
+fi

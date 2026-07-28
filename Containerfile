@@ -65,6 +65,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends binutils && rm 
     printf '%s\n' "${DECKY_LOADER_VERSION}" > dist/.loader.version && \
     cp dist-extra/plugin_loader-prerelease.service dist/
 
+# armada-imu-bridge: libssc (built from source — the copr's 0.2.2 predates gyro
+# support; main has it) + the small daemon that streams the SLPI accel+gyro into
+# a uinput IMU device for InputPlumber. libssc links only glib/libqmi/protobuf-c
+# (all in Fedora, no copr needed to build). Installed into a private prefix
+# (/usr/lib/armada/imu) so it doesn't collide with the copr libssc that
+# iio-sensor-proxy uses; the daemon finds it via rpath.
+FROM quay.io/fedora/fedora-bootc:44 AS imu-bridge
+COPY sensors/armada-imu-bridge.c /build/armada-imu-bridge.c
+RUN set -eux; \
+    dnf5 -y install --setopt=install_weak_deps=False \
+        meson ninja-build gcc git pkgconf-pkg-config \
+        glib2-devel gobject-introspection-devel libqmi-devel protobuf-c-devel; \
+    git clone --depth 1 -b main https://codeberg.org/DylanVanAssche/libssc /build/libssc; \
+    cd /build/libssc; \
+    sed -i "\#subdir('tests')#d" meson.build; \
+    meson setup b --prefix=/usr --libdir=lib/armada/imu -Dwerror=false; \
+    ninja -C b; \
+    ninja -C b install; \
+    gcc -O2 -Wall /build/armada-imu-bridge.c -o /usr/bin/armada-imu-bridge \
+        $(PKG_CONFIG_PATH=/usr/lib/armada/imu/pkgconfig pkg-config --cflags libssc) \
+        $(pkg-config --cflags glib-2.0 gobject-2.0) \
+        -L/usr/lib/armada/imu -lssc $(pkg-config --libs glib-2.0 gobject-2.0) -lm \
+        -Wl,-rpath,/usr/lib/armada/imu; \
+    mkdir -p /out/usr/bin /out/usr/lib/armada/imu; \
+    cp /usr/bin/armada-imu-bridge /out/usr/bin/; \
+    cp -aP /usr/lib/armada/imu/libssc.so* /out/usr/lib/armada/imu/; \
+    /usr/bin/armada-imu-bridge --help 2>/dev/null || true; \
+    ldd /out/usr/bin/armada-imu-bridge || true
+
 FROM scratch AS ctx
 COPY build_files /build_files/
 COPY decky /decky/
@@ -87,6 +116,7 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=bind,from=tqftpserv,source=/,target=/packages/tqftpserv \
     --mount=type=bind,from=decky-build,source=/build/dist,target=/packages/decky-dist \
     --mount=type=bind,from=decky-loader-build,source=/backend/dist,target=/packages/decky-loader \
+    --mount=type=bind,from=imu-bridge,source=/out,target=/packages/imu-bridge \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \

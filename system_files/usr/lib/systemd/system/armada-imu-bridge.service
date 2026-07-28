@@ -1,0 +1,20 @@
+[Unit]
+Description=Armada Odin IMU bridge (SLPI accel+gyro -> uinput for InputPlumber)
+# SDM845 AYN Odin only: streams the SLPI DSP's accelerometer + gyroscope (via
+# libssc) into a uinput IMU device that InputPlumber ingests (imu_generic) and
+# routes to the virtual Steam Deck controller's gyro/accel. Gated on the DSP
+# FastRPC node so it's inert elsewhere; needs the sensor PD up (hexagonrpcd).
+ConditionPathExists=/dev/fastrpc-sdsp
+Wants=hexagonrpcd-sdsp.service
+After=hexagonrpcd-sdsp.service
+
+[Service]
+# Optional on-device tuning of the mount matrix / full-scale ranges without a
+# rebuild: ARMADA_IMU_MOUNT / ARMADA_IMU_ACCEL_FS / ARMADA_IMU_GYRO_FS.
+EnvironmentFile=-/etc/armada/imu-bridge.env
+ExecStart=/usr/bin/armada-imu-bridge
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
