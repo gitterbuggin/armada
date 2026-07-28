@@ -78,6 +78,7 @@ export interface LedGroupState {
 export interface LedState {
   sides: LedGroupState;
   sticks: LedGroupState;
+  power: LedGroupState;
 }
 
 export interface Config {

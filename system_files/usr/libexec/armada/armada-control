@@ -19,12 +19,20 @@ CONFIG_PATHS = {
     "compat-applied": Path("/var/lib/armada/compat-applied.json"),
 }
 LEDS_CONFIG = Path("/etc/armada/leds.json")
-# AYN Odin (SDM845) decorative LEDs: side bars (1/2) and joystick rings
-# (3/4). All four are GPIO_ACTIVE_HIGH in the DT, so brightness 1 = lit.
+# AYN Odin (SDM845) LEDs. Sides (1/2) and sticks (3/4) are GPIO_ACTIVE_HIGH so
+# brightness 1 = lit. The power/charge LED is the PMI8998 LPG green channel
+# (green:indicator, 0-255) — "on" is a dimmed level, not full, so it's a subtle
+# indicator rather than a glare. Keep the "on" value in sync with the udev rule
+# (99-armada-odin-leds.rules) that sets the boot-time dim brightness.
 LED_GROUPS = {
     "sides": {"leds": ("blue:backlight-1", "blue:backlight-2"), "on": "1", "off": "0"},
     "sticks": {"leds": ("blue:backlight-3", "blue:backlight-4"), "on": "1", "off": "0"},
+    "power": {"leds": ("green:indicator",), "on": "64", "off": "0"},
 }
+# Default state for groups with no saved preference: the decorative LEDs stay
+# off until the user opts in; the power LED defaults on (dim), like a normal
+# power indicator.
+LED_DEFAULT_ON = {"sides": False, "sticks": False, "power": True}
 LED_SYSFS = Path("/sys/class/leds")
 CALIBRATION_PARAMS = (
     "axis_leftx_min",
@@ -182,14 +190,18 @@ def action_get_leds(request):
 
 
 def restore_leds():
-    # Best-effort boot restore of the persisted LED preferences.
+    # Boot restore: apply saved LED preferences, falling back to each group's
+    # default (LED_DEFAULT_ON) when the user hasn't set one — so the power LED
+    # comes up dim-on out of the box while the decorative LEDs stay off.
+    saved = {}
     try:
         with LEDS_CONFIG.open(encoding="utf-8") as f:
-            saved = json.load(f)
-        if isinstance(saved, dict):
-            apply_leds({k: bool(v) for k, v in saved.items() if k in LED_GROUPS})
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            saved = loaded
     except (OSError, ValueError):
         pass
+    apply_leds({g: bool(saved.get(g, LED_DEFAULT_ON.get(g, False))) for g in LED_GROUPS})
 
 
 def action_write_config(request):

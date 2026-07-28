@@ -31,7 +31,7 @@ export function Settings({ config, setConfig }: {
       setConfig((current) => (current ? { ...current, controllerType: previous } : current));
     }
   };
-  const setLedGroup = async (group: "sides" | "sticks", on: boolean) => {
+  const setLedGroup = async (group: "sides" | "sticks" | "power", on: boolean) => {
     const previous = config.leds;
     setConfig((current) => {
       if (!current?.leds) return current;
@@ -44,7 +44,7 @@ export function Settings({ config, setConfig }: {
       setConfig((current) => (current ? { ...current, leds: previous } : current));
     }
   };
-  const ledsAvailable = !!(config.leds && (config.leds.sides.available || config.leds.sticks.available));
+  const ledsAvailable = !!(config.leds && (config.leds.sides.available || config.leds.sticks.available || config.leds.power.available));
   return (
     <>
       <PanelSection title="Controller">
@@ -63,6 +63,9 @@ export function Settings({ config, setConfig }: {
           )}
           {config.leds?.sticks.available && (
             <ToggleRow label="Joystick LEDs" value={config.leds.sticks.on} onChange={(on: boolean) => setLedGroup("sticks", on)} />
+          )}
+          {config.leds?.power.available && (
+            <ToggleRow label="Power LED" value={config.leds.power.on} onChange={(on: boolean) => setLedGroup("power", on)} />
           )}
         </PanelSection>
       )}

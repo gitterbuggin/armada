@@ -1,0 +1,6 @@
+# AYN Odin (SDM845): the power/charge LED is the PMI8998 LPG green channel and
+# comes up at full brightness from the DT default-state=on. Dim it to a subtle
+# indicator level the instant the LED registers, so there's no bright-green flash
+# during boot before armada-control takes over. Keep this value in sync with
+# armada-control's LED_GROUPS["power"]["on"]. No-op on devices without this LED.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="green:indicator", ATTR{brightness}="64"
