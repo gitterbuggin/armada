@@ -59,6 +59,11 @@ systemctl enable armada-finalize-staged.path
 systemctl enable armada-odin-bls-dtb.service
 systemctl enable armada-flatpak-setup.service
 systemctl enable armada-waydroid-input.path
+# SLPI accelerometer/gyro stack (Odin). hexagonrpcd-sdsp is ConditionPathExists-
+# gated on /dev/fastrpc-sdsp, so both are inert on devices without the sensor DSP.
+# iio-sensor-proxy is D-Bus activated (net.hadess.SensorProxy), no enable needed.
+systemctl enable pd-mapper.service
+systemctl enable hexagonrpcd-sdsp.service
 systemctl disable waydroid-container.service
 
 # Updates are manual (Steam UI / steamos-update). The base image enables this
