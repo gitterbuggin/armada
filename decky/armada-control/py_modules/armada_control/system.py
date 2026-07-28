@@ -77,6 +77,7 @@ def set_ssh_enabled(enabled):
 LED_UNAVAILABLE = {
     "sides": {"available": False, "on": False},
     "sticks": {"available": False, "on": False},
+    "power": {"available": False, "on": False},
 }
 
 
@@ -91,5 +92,5 @@ def led_state():
 
 
 def set_leds(settings):
-    payload = {k: bool(v) for k, v in settings.items() if k in ("sides", "sticks")}
+    payload = {k: bool(v) for k, v in settings.items() if k in ("sides", "sticks", "power")}
     return call("set_leds", **payload).get("leds", dict(LED_UNAVAILABLE))
