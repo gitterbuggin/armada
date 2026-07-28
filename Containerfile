@@ -75,7 +75,7 @@ FROM quay.io/fedora/fedora-bootc:44 AS imu-bridge
 COPY sensors/armada-imu-bridge.c /build/armada-imu-bridge.c
 RUN set -eux; \
     dnf5 -y install --setopt=install_weak_deps=False \
-        meson ninja-build gcc git pkgconf-pkg-config \
+        meson ninja-build gcc git pkgconf-pkg-config python3-devel \
         glib2-devel gobject-introspection-devel libqmi-devel protobuf-c-devel; \
     git clone --depth 1 -b main https://codeberg.org/DylanVanAssche/libssc /build/libssc; \
     cd /build/libssc; \
@@ -91,8 +91,7 @@ RUN set -eux; \
     mkdir -p /out/usr/bin /out/usr/lib/armada/imu; \
     cp /usr/bin/armada-imu-bridge /out/usr/bin/; \
     cp -aP /usr/lib/armada/imu/libssc.so* /out/usr/lib/armada/imu/; \
-    /usr/bin/armada-imu-bridge --help 2>/dev/null || true; \
-    ldd /out/usr/bin/armada-imu-bridge || true
+    ldd /out/usr/bin/armada-imu-bridge
 
 FROM scratch AS ctx
 COPY build_files /build_files/
