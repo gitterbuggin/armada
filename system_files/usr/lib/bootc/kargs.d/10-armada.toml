@@ -30,11 +30,12 @@ kargs = [
     # Odin micro-HDMI (LT8912B bridge) has no DDC/EDID wire, so DRM gets an
     # empty modelist and never lights the pipe. Pin a fixed 1080p60 CVT
     # reduced-blanking mode: plain 1920x1080@60 generates a 172.78 MHz GTF
-    # clock, above the LT8912B driver's 150 MHz limit. The bridge's internal
-    # cable detection still reports connected/disconnected without the
-    # fabricated HPD GPIO, so don't force the connector on. Blind drive —
-    # correct for a sink we can't read. Swap for a captured EDID via
+    # clock, above the LT8912B driver's 150 MHz limit. Force the connector on:
+    # without the fabricated HPD GPIO, the bridge's internal cable check is
+    # unreliable (observed disconnected with a sink attached and unknown when
+    # unplugged). Blind drive — correct for a sink we can't detect or query.
+    # Swap for a captured EDID via
     # drm_kms_helper.edid_firmware=HDMI-A-1:edid/odin-hdmi.bin later if a
     # specific sink needs different timings/ranges.
-    "video=HDMI-A-1:1920x1080MR@60",
+    "video=HDMI-A-1:1920x1080MR@60e",
 ]
