@@ -1,3 +1,35 @@
+# Armada Ayn Odin port
+
+This is a port of Armada for the original Ayn Odin. **To be completely transparent I have no idea what I'm doing in this space and this is completely vibe coded with Claude and Codex.** I do have development experience but this is an entirely different wheelhouse for me. With that out of the way, through lots of testing on my own device this is what's working thus far:
+
+- [x] Accelerometer/Gyro
+- [x] Microphone
+- [x] Audio
+- [x] Haptics
+- [x] Charging detection
+- [x] DXVK fallback due to missing storageBuffer16BitAccess on Adreno 630
+- [x] Top Power LED - Configurable in Armada Control decky plugin
+- [x] Side and Joystick LED’s - Configurable in Armada Control decky plugin
+- [x] GPU Overclock in Performance mode (787 MHz, 75c thermal throttle)
+- [x] Fan control
+- [x] Touch
+- [x] Sound
+- [x] Fake Suspend
+- [x] Gamepad controls
+
+Things that probably don't work (Untested):
+- [] HDMI - WIP
+- [] DisplayPort
+- [] USB OTG
+- [] Anything on the Odin M2 variant
+- [] **Installing to internal disk - DO NOT ATTEMPT**
+- [] Any system/client updates through Gamescope
+- [] Shutdown reboots the device for some reason
+
+Please don't expect any updates or support for this. This was something I attempted out of boredom and I'm only publishing this in case it may be useful for someone else.
+
+P.S. Do not expect to run things like Cyberpunk well on the Ayn Odin, it simply does not have that kind of power.
+
 # Armada
 
 A SteamOS-like Linux distribution for ARM handhelds built on Fedora bootc using

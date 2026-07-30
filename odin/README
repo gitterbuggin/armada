@@ -35,6 +35,8 @@ If U-Boot appears and boots Armada from SD, make it permanent per your ABL:
 
 Method A -- older ABL, boot-slot chainload:
 
+**This method did not work for me.**
+
   1. fastboot getvar current-slot   (assume "a"; Linux -> slot "b")
   2. fastboot erase dtbo_b          (else Android's dtbo overlays break
                                      U-Boot's device tree)
@@ -44,11 +46,16 @@ Method A -- older ABL, boot-slot chainload:
 
 Method B -- AYN multiboot ABL (`DEFAULT BOOT` present), loader partition:
 
+**This is the tested method that's proven working on my device.**
+
   The ABL boots a `loader` partition when DEFAULT BOOT = Custom. Stock
   layout has none, so we repartition to add it (this WIPES internal
   Android incl. persist; Armada on the SD is untouched). Uses Project
   Valhalla's odin_custom_boot package (github.com/ProjectValhalla) for the
   repartition GPT -- pick gpt0_64/128/256 by storage size:
+
+  Since ProjectValhalla seems to have shut down their resources, here is a mirror I found:
+  https://mega.nz/folder/wQJ2ACjb#teN2z-FFNkoIyDgqkL6M3A
 
   1. fastboot getvar partition-size:userdata
        0xB3B1F3000  -> 64GB  -> gpt0_64.bin
